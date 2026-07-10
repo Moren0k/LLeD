@@ -545,6 +545,24 @@ async def manejar_cliente(websocket):
                     "ok": True, "evento": "ajustes", "ajustes": resultado
                 }))
 
+            elif comando == "ajustes_reset":
+                resultado = ajustes.resetear()
+                motor.set_fps(resultado.get("fps_transicion", motor.fps))
+                visual_hub.set_titulo(cfg_titulo())
+                visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+                detector_ritmo.set_sensibilidad_impacto(ajustes.get("ambilight_sensibilidad_audio"))
+                capturador.configurar(
+                    fps=ajustes.get("ambilight_fps"),
+                    suavizado=ajustes.get("ambilight_suavizado"),
+                    saturacion=ajustes.get("ambilight_saturacion"),
+                    peso_bordes=ajustes.get("ambilight_peso_bordes"),
+                    peso_dominante=ajustes.get("ambilight_peso_dominante"),
+                    monitor=ajustes.get("ambilight_monitor"),
+                )
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ajustes", "ajustes": resultado, "reseteado": True
+                }))
+
             # ── Comandos Cache de colores ──────────────────────────
 
             elif comando == "cache_listar":
@@ -896,9 +914,9 @@ async def _bucle_ambilight(websocket, estado: EstadoLED, capturador, detector, a
                     calido = (255, 120, 40)
                     inten = imin + (imax - imin) * energia
                     obj = tuple(int(c * inten) for c in calido)
-                    await motor.crossfade(*obj, duracion=0.12)
+                    await motor.aplicar(*obj)
                 else:
-                    await motor.crossfade(0, 0, 0, duracion=0.3)
+                    await motor.aplicar(0, 0, 0)
                 estado.set_base(motor.r, motor.g, motor.b)
                 await _enviar_json(websocket, {
                     "ok": True, "evento": "ambilight_color",
@@ -922,7 +940,7 @@ async def _bucle_ambilight(websocket, estado: EstadoLED, capturador, detector, a
                 inten_flash = min(1.0, intensidad + 0.35 + 0.65 * fuerza)
                 await motor.aplicar(int(r * inten_flash), int(g * inten_flash), int(b * inten_flash))
             else:
-                await motor.crossfade(r2, g2, b2, duracion=0.12)
+                await motor.aplicar(r2, g2, b2)
 
             estado.set_base(r2, g2, b2)
             await _enviar_json(websocket, {

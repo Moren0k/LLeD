@@ -46,7 +46,7 @@ DEFAULTS: dict[str, Any] = {
     "visual_tipo": "aurora",       # "aurora" | "orbes" | "ondas"
     "visual_movimiento": True,
     # Cine Mode (ambilight): color ambiente según la pantalla.
-    "ambilight_fps": 20,               # 10 - 30
+    "ambilight_fps": 15,               # 10 - 30
     "ambilight_suavizado": 0.6,        # 0 - 0.95 (EMA, mayor = más suave)
     "ambilight_saturacion": 1.4,       # 1.0 - 2.5
     "ambilight_intensidad_min": 0.08,  # 0 - 1
@@ -179,6 +179,14 @@ class Ajustes:
             if self.autosave:
                 self._persistir()
             return self._datos[clave]
+
+    def resetear(self) -> dict[str, Any]:
+        """Restablece todos los ajustes a los valores por defecto."""
+        with self._lock:
+            self._datos = dict(DEFAULTS)
+            if self.autosave:
+                self._persistir()
+            return dict(self._datos)
 
     def actualizar(self, cambios: dict[str, Any]) -> dict[str, Any]:
         """Aplica varios ajustes de una vez. Devuelve el diccionario completo resultante."""

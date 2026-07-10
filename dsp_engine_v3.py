@@ -206,16 +206,25 @@ class KickBassClassifier:
         self.model = None
         self.scaler = None
         self.features_cache = deque(maxlen=10)
+        self._cache_len = None
+        self._bandas = None
+
+    def _obtener_bandas(self, n: int, sr: int):
+        if self._cache_len != n:
+            n_fft = (n - 1) * 2
+            freqs = np.fft.rfftfreq(n_fft, 1 / sr)
+            self._bandas = (
+                (freqs >= 40) & (freqs <= 120),
+                (freqs >= 80) & (freqs <= 250),
+                (freqs >= 20) & (freqs <= 100),
+                (freqs >= 500) & (freqs <= 8000),
+            )
+            self._cache_len = n
+        return self._bandas
 
     def extract_features(self, magnitude: np.ndarray, sr: int = 48000) -> np.ndarray:
         """Extrae características para clasificación."""
-        n_fft = (len(magnitude) - 1) * 2
-        freqs = np.fft.rfftfreq(n_fft, 1 / sr)
-
-        kick_band = (freqs >= 40) & (freqs <= 120)
-        bass_band = (freqs >= 80) & (freqs <= 250)
-        sub_band = (freqs >= 20) & (freqs <= 100)
-        high_band = (freqs >= 500) & (freqs <= 8000)
+        kick_band, bass_band, sub_band, high_band = self._obtener_bandas(len(magnitude), sr)
 
         features = np.array([
             np.sum(magnitude[kick_band] ** 2),
@@ -283,15 +292,25 @@ class SourceSeparation:
         self.sr = sr
         self.kick_buffer = deque(maxlen=200)
         self.bass_buffer = deque(maxlen=200)
+        self._cache_len = None
+        self._filtros = None
+
+    def _obtener_filtros(self, n: int):
+        """Filtros gaussianos cacheados (no recalcular por frame)."""
+        if self._cache_len != n:
+            n_fft = (n - 1) * 2
+            freqs = np.fft.rfftfreq(n_fft, 1 / self.sr)
+            self._filtros = (
+                np.exp(-((freqs - 80) ** 2) / (2 * 30 ** 2)),
+                np.exp(-((freqs - 150) ** 2) / (2 * 50 ** 2)),
+                np.exp(-((freqs - 400) ** 2) / (2 * 150 ** 2)),
+            )
+            self._cache_len = n
+        return self._filtros
 
     def separate(self, spectrum: np.ndarray) -> Dict[str, np.ndarray]:
         """Separa componentes por frecuencia."""
-        n_fft = (len(spectrum) - 1) * 2
-        freqs = np.fft.rfftfreq(n_fft, 1 / self.sr)
-
-        kick_filter = np.exp(-((freqs - 80) ** 2) / (2 * 30 ** 2))
-        bass_filter = np.exp(-((freqs - 150) ** 2) / (2 * 50 ** 2))
-        mid_filter = np.exp(-((freqs - 400) ** 2) / (2 * 150 ** 2))
+        kick_filter, bass_filter, mid_filter = self._obtener_filtros(len(spectrum))
 
         kick = spectrum * kick_filter
         bass = spectrum * bass_filter
@@ -309,13 +328,19 @@ class SourceSeparation:
         }
 
 
+_SNR_MASK_CACHE: dict = {}
+
+
 def compute_snr(magnitude_spectrum: np.ndarray, sr: int = 48000) -> float:
     """SNR en dB."""
-    n_fft = (len(magnitude_spectrum) - 1) * 2
-    freqs = np.fft.rfftfreq(n_fft, 1 / sr)
-
-    signal_band = (freqs >= 20) & (freqs <= 1000)
-    noise_band = (freqs >= 8000) & (freqs <= sr / 2)
+    clave = (len(magnitude_spectrum), sr)
+    bandas = _SNR_MASK_CACHE.get(clave)
+    if bandas is None:
+        n_fft = (len(magnitude_spectrum) - 1) * 2
+        freqs = np.fft.rfftfreq(n_fft, 1 / sr)
+        bandas = ((freqs >= 20) & (freqs <= 1000), (freqs >= 8000) & (freqs <= sr / 2))
+        _SNR_MASK_CACHE[clave] = bandas
+    signal_band, noise_band = bandas
     signal_energy = np.sum(magnitude_spectrum[signal_band] ** 2)
     noise_energy = np.sum(magnitude_spectrum[noise_band] ** 2)
     snr_linear = signal_energy / (noise_energy + 1e-6)
@@ -415,16 +440,28 @@ class DetectorImpacto:
         self.hist_db = deque(maxlen=180)  # ~pocos segundos de historia
         self.umbral_db = 9.0              # ajustable por sensibilidad
         self._init = False
+        self._cache_len = None
+        self._masks = None
 
     def set_sensibilidad(self, s: float) -> None:
         """s en 0..1: 0 = poco sensible (salto grande), 1 = muy sensible."""
         s = max(0.0, min(1.0, float(s)))
         self.umbral_db = 14.0 - 9.0 * s   # 14 dB (poco) .. 5 dB (mucho)
 
+    def _obtener_masks(self, n: int, sr: int):
+        if self._cache_len != n:
+            n_fft = (n - 1) * 2
+            freqs = np.fft.rfftfreq(n_fft, 1 / sr)
+            self._masks = (
+                (freqs >= 20) & (freqs <= 250),
+                (freqs > 250) & (freqs <= 4000),
+                (freqs > 4000) & (freqs <= 16000),
+            )
+            self._cache_len = n
+        return self._masks
+
     def analyze(self, magnitude: np.ndarray, sr: int = None) -> dict:
         sr = sr or self.sr
-        n_fft = (len(magnitude) - 1) * 2
-        freqs = np.fft.rfftfreq(n_fft, 1 / sr)
 
         energy = float(np.sqrt(np.mean(magnitude ** 2)))
         db = 20.0 * np.log10(energy + 1e-9)
@@ -433,9 +470,7 @@ class DetectorImpacto:
             self._init = True
         self.hist_db.append(db)
 
-        sub = (freqs >= 20) & (freqs <= 250)
-        voz = (freqs > 250) & (freqs <= 4000)
-        agudo = (freqs > 4000) & (freqs <= 16000)
+        sub, voz, agudo = self._obtener_masks(len(magnitude), sr)
         e_sub = float(np.sum(magnitude[sub] ** 2))
         e_voz = float(np.sum(magnitude[voz] ** 2))
         e_agudo = float(np.sum(magnitude[agudo] ** 2))

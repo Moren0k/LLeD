@@ -170,6 +170,17 @@ async def test_visual_estado_inactivo(servidor_ws):
         assert ev["url"].startswith("http://")
 
 
+async def test_ajustes_reset(servidor_ws):
+    async with websockets.connect(servidor_ws["uri"]) as ws:
+        await _recibir_evento(ws, "conectado")
+        await ws.send(json.dumps({"comando": "ajustes_guardar", "cambios": {"modo_transicion": MODO_BRUSCO}}))
+        await _recibir_evento(ws, "ajustes")
+        await ws.send(json.dumps({"comando": "ajustes_reset"}))
+        ev = await _recibir_evento(ws, "ajustes")
+        assert ev.get("reseteado") is True
+        assert ev["ajustes"]["modo_transicion"] == "gradiente"
+
+
 async def test_ambilight_monitores(servidor_ws, monkeypatch):
     monkeypatch.setattr(servidor, "listar_monitores", lambda: [{"indice": 0, "nombre": "Todos", "ancho": 1920, "alto": 1080}])
     async with websockets.connect(servidor_ws["uri"]) as ws:

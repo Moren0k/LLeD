@@ -61,6 +61,17 @@ Sistema profesional de **detección de ritmo en tiempo real** y sincronización 
   negra, Cine Mode **degrada a solo-audio** automáticamente.
 - Solo local. Ajustes: fps, suavidad, saturación, intensidad, pesos, monitor.
 
+### ⚡ Rendimiento (optimizado)
+- Las máscaras/ventanas de FFT del motor de audio se **precomputan y cachean** (antes se
+  recalculaban ~94 veces/seg).
+- Cine Mode aplica el color con envío único por frame (sin transiciones intermedias, ya que
+  la captura suaviza con EMA) y corre a **15 fps** por defecto con submuestreo alto.
+- Ajustable: bajá los FPS de Cine si tu PC va justa (pestaña Cine → Ajuste fino).
+
+### ♻️ Reiniciar (NUEVO)
+- **Ajustes → Reinicio**: "Restablecer ajustes" (vuelve todo a fábrica) y "Borrar historial de
+  colores" (vacía la biblioteca por canción). No afecta el dispositivo ni la sesión de Spotify.
+
 ### 🔌 Cualquier luz Bluetooth (NUEVO)
 - Escaneo y selección del dispositivo BLE desde la app (Ajustes → Dispositivo).
   Ya no hay MAC fija. *Nota:* usa el protocolo ELK-BLEDOM; tiras con otro

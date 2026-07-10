@@ -50,7 +50,7 @@ export function useControlador() {
     visual_titulo_escala: 1.0,
     visual_titulo_x: 0.5,
     visual_titulo_y: 0.85,
-    ambilight_fps: 20,
+    ambilight_fps: 15,
     ambilight_suavizado: 0.6,
     ambilight_saturacion: 1.4,
     ambilight_intensidad_min: 0.08,
@@ -197,6 +197,8 @@ export function useControlador() {
     }, 200)
   }
   function cargarBiblioteca() { enviar('cache_listar') }
+  function borrarHistorial() { enviar('cache_limpiar') }
+  function resetearAjustes() { enviar('ajustes_reset') }
 
   // ── Dispositivo ──
   function escanear() {
@@ -415,6 +417,7 @@ export function useControlador() {
     cambiarModoSync, pedirEstadoSpotify,
     toggleRitmo, cambiarFlashColor, flashColorCancion, toggleFlashOnly, cambiarModoDeteccion,
     cambiarModoTransicion, cambiarDuracion, cargarBiblioteca, editarColorCancion, eliminarCancion,
+    borrarHistorial, resetearAjustes,
     escanear, conectarDispositivo, iniciarVisual, detenerVisual,
     abrirVisualFull, cerrarVisualFull, setAjuste,
     toggleAmbilight, cargarMonitores, setAmbilight,

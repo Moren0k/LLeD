@@ -159,7 +159,7 @@ class CapturadorPantalla:
         saturacion: float = 1.4,
         peso_bordes: float = 0.5,
         peso_dominante: float = 0.3,
-        muestra: int = 16,
+        muestra: int = 24,
     ) -> None:
         self.monitor = int(monitor)
         self.fps = max(5, int(fps))

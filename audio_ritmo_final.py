@@ -53,6 +53,7 @@ class DetectorRitmo:
         # Motor DSP profesional (FASES 1, 2, 3)
         self._dsp_engine = CompleteDSPEngine(sr=self._tasa)
         self._audio_buffer = np.zeros(FFT_SIZE)
+        self._ventana = np.hanning(FFT_SIZE)  # precomputada (no recalcular por bloque)
         self._last_beat_times = deque(maxlen=20)
 
         # Detector de impactos para Cine Mode (independiente del ritmo).
@@ -117,8 +118,7 @@ class DetectorRitmo:
         self._audio_buffer[-HOP_SIZE:] = datos[:HOP_SIZE]
 
         # FFT
-        window = np.hanning(FFT_SIZE)
-        audio_windowed = self._audio_buffer * window
+        audio_windowed = self._audio_buffer * self._ventana
         spectrum = np.fft.rfft(audio_windowed, n=FFT_SIZE * 2)
         magnitude = np.abs(spectrum)
 

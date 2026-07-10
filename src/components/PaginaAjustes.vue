@@ -72,13 +72,42 @@
         <span class="valor">{{ Number(ctrl.ajustes[s.clave]).toFixed(2) }}s</span>
       </div>
     </div>
+
+    <!-- Reinicio -->
+    <div class="glass card">
+      <div class="fila-titulo">
+        <span class="sub">Reinicio</span>
+        <AyudaInfo>Volvé todo a los valores de fábrica o borrá el historial de colores por canción (biblioteca). No afecta tu dispositivo ni la sesión de Spotify.</AyudaInfo>
+      </div>
+      <div class="acciones">
+        <button class="btn btn-glass" @click="restablecer">Restablecer ajustes</button>
+        <button class="btn btn-glass peligro" @click="borrar">Borrar historial de colores</button>
+      </div>
+      <p v-if="msg" class="ok-msg">{{ msg }}</p>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { inject } from 'vue'
+import { inject, ref } from 'vue'
 import AyudaInfo from './AyudaInfo.vue'
 const ctrl = inject('ctrl')
+const msg = ref('')
+
+function aviso(t) { msg.value = t; setTimeout(() => { msg.value = '' }, 2500) }
+
+function restablecer() {
+  if (confirm('¿Restablecer todos los ajustes a los valores por defecto?')) {
+    ctrl.resetearAjustes()
+    aviso('Ajustes restablecidos.')
+  }
+}
+function borrar() {
+  if (confirm('¿Borrar el historial de colores de todas las canciones? Esto no se puede deshacer.')) {
+    ctrl.borrarHistorial()
+    aviso('Historial de colores borrado.')
+  }
+}
 </script>
 
 <style scoped>
@@ -89,6 +118,15 @@ const ctrl = inject('ctrl')
 .mini-label { font-size: 0.8rem; color: var(--text2); min-width: 78px; }
 .valor { font-size: 0.82rem; font-weight: 600; color: var(--text2); min-width: 44px; text-align: right; }
 .nota { font-size: 0.78rem; color: var(--text3); line-height: 1.55; }
+
+/* Reinicio */
+.fila-titulo { display: flex; align-items: center; gap: 8px; }
+.sub { font-size: 0.95rem; font-weight: 600; }
+.acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+.acciones .btn { flex: 1; min-width: 150px; }
+.btn-glass.peligro { color: var(--red); }
+.btn-glass.peligro:hover { background: rgba(255, 91, 82, 0.14); border-color: rgba(255, 91, 82, 0.4); }
+.ok-msg { font-size: 0.78rem; color: var(--green); }
 
 /* Dispositivo */
 .fila-disp { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
