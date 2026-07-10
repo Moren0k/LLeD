@@ -1,0 +1,20 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+venv/
+.vite/
+out/
+
+# Salidas de build (se regeneran)
+dist_backend/
+build_pyi/
+dist_installer/
+
+# Datos locales del usuario (no compartir)
+.spotify_cache
+color_cache.json
+ajustes.json
+config.json
+config.local.json
+.pytest_cache/

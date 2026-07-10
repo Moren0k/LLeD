@@ -1,0 +1,934 @@
+"""Servidor WebSocket para controlar la tira LED desde Electron.
+
+Comandos BLE:
+  encender, apagar, color, brillo, probar, arcoiris, ping
+
+Comandos Spotify:
+  spotify_login, spotify_logout, spotify_estado,
+  spotify_iniciar, spotify_detener, spotify_info, spotify_modo
+
+Comandos Ritmo:
+  ritmo_iniciar, ritmo_detener, ritmo_flash_color,
+  ritmo_modo_deteccion, ritmo_flash_only
+
+Comandos Ajustes:
+  ajustes_obtener, ajustes_guardar
+
+Comandos Cache de colores:
+  cache_listar, cache_editar, cache_eliminar, cache_limpiar
+
+── Comportamiento de color al cambiar de canción ────────────────────────
+Cuando suena una canción nueva:
+  • Si su color ya está en cache  → transición directa color→color
+    (crossfade en modo gradiente, o cambio instantáneo en modo brusco).
+  • Si el color hay que calcularlo → baja el brillo (fade a negro) MIENTRAS
+    se analiza la portada, y al terminar sube el brillo con el color nuevo
+    (fade desde negro). En modo brusco el cambio es instantáneo.
+El color calculado se guarda en cache para que la próxima vez sea inmediato.
+"""
+
+import asyncio
+import json
+import os
+
+from typing import Optional
+
+import websockets
+
+from ajustes import Ajustes
+from audio_ritmo_final import DetectorRitmo
+from cache_colores import CacheColores, FUENTE_AUTO, FUENTE_USUARIO
+from extractor_color import portada_a_rgb
+from led import TiraLED
+from rutas import ruta_datos
+from spotify_cliente import ClienteSpotify, cargar_config_spotify
+from transiciones import MotorTransiciones
+from visual_server import hub as visual_hub
+
+PUERTO = 8765
+INTERVALO_VERIFICACION = 1.5
+DURACION_PULSO = 0.08
+
+RUTA_CACHE_COLORES = ruta_datos("color_cache.json")
+RUTA_AJUSTES = ruta_datos("ajustes.json")
+
+
+# ── Singletons de proceso (cache y ajustes son compartidos) ──────────────
+# Se exponen a nivel de módulo para que las pruebas puedan sustituirlos.
+_cache_colores: Optional[CacheColores] = None
+_ajustes_usuario: Optional[Ajustes] = None
+
+
+def obtener_cache() -> CacheColores:
+    global _cache_colores
+    if _cache_colores is None:
+        _cache_colores = CacheColores(RUTA_CACHE_COLORES)
+    return _cache_colores
+
+
+def obtener_ajustes() -> Ajustes:
+    global _ajustes_usuario
+    if _ajustes_usuario is None:
+        _ajustes_usuario = Ajustes(RUTA_AJUSTES)
+    return _ajustes_usuario
+
+
+# ── Fábricas inyectables (las pruebas las monkeypatchean) ────────────────
+def _crear_tira(direccion: str) -> TiraLED:
+    return TiraLED(direccion)
+
+
+def _crear_spotify(creds: dict) -> ClienteSpotify:
+    return ClienteSpotify(creds["cliente_id"], creds["cliente_secreto"])
+
+
+async def calcular_color_cancion(spotify, cancion: dict, modo: str):
+    """Calcula el color de una canción SIN bloquear el event loop.
+
+    El trabajo pesado (descargar la portada y extraer el color) corre en un
+    hilo aparte vía ``run_in_executor``. Devuelve (r, g, b) o None.
+    """
+    loop = asyncio.get_event_loop()
+    if modo == "humor":
+        caracteristicas = await spotify.obtener_caracteristicas(cancion["cancion_id"])
+        if caracteristicas:
+            return mapear_caracteristicas_a_rgb(caracteristicas)
+        return None
+
+    url = cancion.get("url_portada")
+    if not url:
+        return None
+    return await loop.run_in_executor(None, portada_a_rgb, url, "basico")
+
+
+class EstadoLED:
+    """Estado por conexión: color base, flash de ritmo y motor de transiciones."""
+
+    def __init__(self, tira: TiraLED, motor: MotorTransiciones) -> None:
+        self.tira = tira
+        self.motor = motor
+        # Color base = color de la canción o selección manual actual.
+        self.r_base = 0
+        self.g_base = 0
+        self.b_base = 0
+        # Flash del modo ritmo.
+        self.r_flash = 255
+        self.g_flash = 255
+        self.b_flash = 255
+        self.flash_only = False
+        self.modo_deteccion = "kick"
+        # Canción sonando (para editar su color en caliente).
+        self.cancion_actual_id: Optional[str] = None
+        self.cancion_nombre: str = ""
+        self.cancion_artista: str = ""
+        self.tarea_pulso: Optional[asyncio.Task] = None
+
+    def set_base(self, r: int, g: int, b: int) -> None:
+        self.r_base, self.g_base, self.b_base = r, g, b
+
+
+async def _enviar_json(websocket, obj: dict) -> None:
+    """Envía JSON tolerando que la conexión se haya cerrado."""
+    try:
+        await websocket.send(json.dumps(obj))
+    except websockets.exceptions.ConnectionClosed:
+        pass
+
+
+async def _pulso_beat(estado: EstadoLED, energy_intensity: float = 1.0) -> None:
+    """Flash dinámico con rango COMPLETO 0-100% de brillo.
+
+    energy_intensity: 0-1 (0=apagado, 1=máximo)
+    """
+    tira = estado.tira
+    try:
+        intensity = energy_intensity  # 0-1 sin límite inferior
+
+        r_intenso = int(estado.r_flash * intensity)
+        g_intenso = int(estado.g_flash * intensity)
+        b_intenso = int(estado.b_flash * intensity)
+
+        await tira.color(r_intenso, g_intenso, b_intenso)
+
+        pulse_duration = (0.03 * (1 - energy_intensity)) + (0.12 * energy_intensity)
+        await asyncio.sleep(pulse_duration)
+
+        if estado.flash_only:
+            if energy_intensity < 0.2:
+                await tira.color(0, 0, 0)
+            else:
+                dim_factor = max(1, int(20 / (energy_intensity + 0.1)))
+                await tira.color(
+                    max(0, estado.r_flash // dim_factor),
+                    max(0, estado.g_flash // dim_factor),
+                    max(0, estado.b_flash // dim_factor),
+                )
+        else:
+            if energy_intensity < 0.15:
+                await tira.color(0, 0, 0)
+            else:
+                await tira.color(estado.r_base, estado.g_base, estado.b_base)
+
+    except asyncio.CancelledError:
+        pass
+
+
+def cargar_config() -> dict:
+    """Lee config.json completo."""
+    ruta = ruta_datos("config.json")
+    if not os.path.exists(ruta):
+        return {"direccion_mac": None}
+    with open(ruta, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def guardar_config(config: dict) -> None:
+    """Guarda config.json completo."""
+    ruta = ruta_datos("config.json")
+    with open(ruta, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+
+class _TiraNula:
+    """Tira falsa usada cuando no hay dispositivo conectado (no-op seguro)."""
+
+    async def conectar(self): pass
+    async def desconectar(self): pass
+    async def encender(self): pass
+    async def apagar(self): pass
+    async def color(self, r, g, b): pass
+    async def brillo(self, valor): pass
+    async def probar_colores(self): pass
+    async def arcoiris(self, *a, **k): pass
+
+
+async def manejar_cliente(websocket):
+    """Mantiene una conexión por cliente: BLE + Spotify + sincronización."""
+    cache = obtener_cache()
+    ajustes = obtener_ajustes()
+
+    spotify_creds = cargar_config_spotify(ruta_datos("config.json"))
+    spotify = _crear_spotify(spotify_creds)
+    # Restaura la sesión de Spotify desde la caché (sin navegador) si existe.
+    if hasattr(spotify, "autenticar_desde_cache"):
+        try:
+            spotify.autenticar_desde_cache()
+        except Exception:
+            pass
+
+    config = cargar_config()
+    direccion = config.get("direccion_mac")
+
+    motor = MotorTransiciones(_TiraNula(), fps=ajustes.get("fps_transicion"))
+
+    def _reflejar_color(r, g, b):
+        # Cada paso real de la transición va al visual remoto y al fondo de la app.
+        visual_hub.set_color(r, g, b)
+        asyncio.create_task(_enviar_json(websocket, {
+            "ok": True, "evento": "visual_color", "r": r, "g": g, "b": b
+        }))
+
+    motor.on_color = _reflejar_color
+    estado = EstadoLED(_TiraNula(), motor)
+    tira = estado.tira
+    dispositivo_conectado = False
+
+    async def conectar_a(nueva_direccion):
+        """Conecta a una MAC concreta y actualiza motor/estado. Devuelve la tira."""
+        nonlocal tira, dispositivo_conectado, direccion
+        nueva = _crear_tira(nueva_direccion)
+        await nueva.conectar()
+        await nueva.encender()
+        tira = nueva
+        motor.tira = nueva
+        motor._ultimo_enviado = None
+        estado.tira = nueva
+        dispositivo_conectado = True
+        direccion = nueva_direccion
+        return nueva
+
+    def info_dispositivo():
+        return {"direccion": direccion, "conectado": dispositivo_conectado}
+
+    def cfg_titulo():
+        return {
+            "titulo": ajustes.get("visual_titulo"),
+            "titulo_escala": ajustes.get("visual_titulo_escala"),
+            "titulo_x": ajustes.get("visual_titulo_x"),
+            "titulo_y": ajustes.get("visual_titulo_y"),
+        }
+
+    tarea_sincronizacion: Optional[asyncio.Task] = None
+    sincronizando = False
+    sync_modo = ajustes.get("sync_modo")
+    detector_ritmo = DetectorRitmo(modo_deteccion=estado.modo_deteccion)
+    ritmo_activado = False
+    tarea_ritmo: Optional[asyncio.Task] = None
+
+    COMANDOS_LED = {"encender", "apagar", "color", "brillo", "probar", "arcoiris"}
+
+    try:
+        if direccion:
+            try:
+                await conectar_a(direccion)
+                print("Cliente conectado. Tira lista.")
+            except Exception as e:
+                print(f"No se pudo conectar al dispositivo {direccion}: {e}")
+        await websocket.send(json.dumps({
+            "ok": True, "evento": "conectado", "dispositivo": info_dispositivo()
+        }))
+
+        async for mensaje in websocket:
+            datos = json.loads(mensaje)
+            comando = datos.get("comando")
+
+            # Los comandos que tocan el LED requieren un dispositivo conectado.
+            if comando in COMANDOS_LED and not dispositivo_conectado:
+                await websocket.send(json.dumps({
+                    "ok": False, "evento": "sin_dispositivo",
+                    "error": "No hay ningún dispositivo LED conectado. Escaneá y conectá uno."
+                }))
+                continue
+
+            # ── Comandos BLE ──────────────────────────────────────
+
+            if comando == "encender":
+                await tira.encender()
+                await websocket.send(json.dumps({"ok": True, "evento": "encendido"}))
+
+            elif comando == "apagar":
+                await tira.apagar()
+                await websocket.send(json.dumps({"ok": True, "evento": "apagado"}))
+
+            elif comando == "color":
+                r = datos["r"]
+                g = datos["g"]
+                b = datos["b"]
+                estado.set_base(r, g, b)
+                if estado.flash_only and ritmo_activado:
+                    estado.r_flash, estado.g_flash, estado.b_flash = r, g, b
+                    await tira.color(r, g, b)
+                    await asyncio.sleep(0.15)
+                    await tira.color(r // 50 or 1, g // 50 or 1, b // 50 or 1)
+                else:
+                    # Selección manual: cambio instantáneo (responsivo al arrastrar).
+                    # (motor.on_color refleja el color en el visual remoto)
+                    await motor.aplicar(r, g, b)
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "color", "r": r, "g": g, "b": b
+                }))
+
+            elif comando == "brillo":
+                valor = datos["valor"]
+                await tira.brillo(valor)
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "brillo", "valor": valor
+                }))
+
+            elif comando == "probar":
+                await tira.probar_colores()
+                await websocket.send(json.dumps({"ok": True, "evento": "prueba_completada"}))
+
+            elif comando == "arcoiris":
+                pasos = datos.get("pasos", 12)
+                demora = datos.get("demora", 0.8)
+                await tira.arcoiris(pasos, demora)
+                await websocket.send(json.dumps({"ok": True, "evento": "arcoiris_completado"}))
+
+            elif comando == "ping":
+                await websocket.send(json.dumps({"ok": True, "evento": "pong"}))
+
+            # ── Comandos Spotify ──────────────────────────────────
+
+            elif comando == "spotify_login":
+                if not spotify.tiene_credenciales():
+                    await websocket.send(json.dumps({
+                        "ok": False,
+                        "error": "Configura spotify_cliente_id y spotify_cliente_secreto en config.json"
+                    }))
+                    continue
+
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "spotify_esperando",
+                    "mensaje": "Se abrirá el navegador para iniciar sesión con Spotify"
+                }))
+
+                asyncio.create_task(_auth_spotify_task(websocket, spotify))
+
+            elif comando == "spotify_logout":
+                spotify.cerrar_sesion()
+                if tarea_sincronizacion:
+                    tarea_sincronizacion.cancel()
+                    tarea_sincronizacion = None
+                sincronizando = False
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "spotify_desconectado"
+                }))
+
+            elif comando == "spotify_estado":
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "spotify_estado",
+                    "autenticado": spotify.esta_autenticado(),
+                    "sincronizando": sincronizando,
+                    "modo": sync_modo,
+                    "tiene_credenciales": spotify.tiene_credenciales(),
+                    "ritmo_activado": ritmo_activado,
+                    "ritmo_disponible": detector_ritmo.disponible,
+                    "flash_color": {"r": estado.r_flash, "g": estado.g_flash, "b": estado.b_flash},
+                    "flash_only": estado.flash_only,
+                    "modo_deteccion": estado.modo_deteccion,
+                    "ajustes": ajustes.to_dict(),
+                    "dispositivo": info_dispositivo(),
+                    "visual": visual_hub.info(),
+                }))
+
+            elif comando == "spotify_info":
+                cancion = await spotify.obtener_cancion_actual()
+                if cancion:
+                    caracteristicas = await spotify.obtener_caracteristicas(cancion["cancion_id"])
+                    await websocket.send(json.dumps({
+                        "ok": True, "evento": "spotify_info",
+                        "cancion": cancion,
+                        "caracteristicas": caracteristicas,
+                    }))
+                else:
+                    await websocket.send(json.dumps({
+                        "ok": True, "evento": "spotify_info",
+                        "cancion": None, "caracteristicas": None
+                    }))
+
+            elif comando == "spotify_iniciar":
+                if not spotify.esta_autenticado():
+                    await websocket.send(json.dumps({
+                        "ok": False, "error": "Primero inicia sesión con spotify_login"
+                    }))
+                    continue
+
+                if tarea_sincronizacion:
+                    tarea_sincronizacion.cancel()
+                sync_modo = datos.get("modo", sync_modo)
+                ajustes.set("sync_modo", sync_modo)
+                sincronizando = True
+                tarea_sincronizacion = asyncio.create_task(
+                    bucle_sincronizacion(
+                        websocket, estado, spotify, cache, ajustes, lambda: sync_modo
+                    )
+                )
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "spotify_sincronizando",
+                    "modo": sync_modo
+                }))
+
+            elif comando == "spotify_detener":
+                if tarea_sincronizacion:
+                    tarea_sincronizacion.cancel()
+                    tarea_sincronizacion = None
+                sincronizando = False
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "spotify_detenido"
+                }))
+
+            elif comando == "spotify_modo":
+                sync_modo = datos.get("modo", "portada")
+                ajustes.set("sync_modo", sync_modo)
+                if sincronizando:
+                    await websocket.send(json.dumps({
+                        "ok": True, "evento": "spotify_modo_cambiado",
+                        "modo": sync_modo
+                    }))
+                else:
+                    await websocket.send(json.dumps({
+                        "ok": True, "evento": "spotify_modo_cambiado",
+                        "modo": sync_modo,
+                        "nota": "Modo guardado. Inicia sincronización para activarlo."
+                    }))
+
+            # ── Comandos Ritmo ─────────────────────────────────────
+
+            elif comando == "ritmo_iniciar":
+                if not detector_ritmo.disponible:
+                    await websocket.send(json.dumps({
+                        "ok": False, "evento": "ritmo_error",
+                        "error": "No se encontró dispositivo de audio loopback (Stereo Mix)"
+                    }))
+                    continue
+
+                ok = detector_ritmo.iniciar()
+                if ok:
+                    ritmo_activado = True
+                    visual_hub.set_ritmo(True)
+                    if tarea_ritmo:
+                        tarea_ritmo.cancel()
+                    tarea_ritmo = asyncio.create_task(
+                        _bucle_ritmo(websocket, estado, detector_ritmo)
+                    )
+                    await websocket.send(json.dumps({
+                        "ok": True, "evento": "ritmo_activado"
+                    }))
+                else:
+                    await websocket.send(json.dumps({
+                        "ok": False, "evento": "ritmo_error",
+                        "error": "No se pudo iniciar la captura de audio"
+                    }))
+
+            elif comando == "ritmo_detener":
+                ritmo_activado = False
+                visual_hub.set_ritmo(False)
+                detector_ritmo.detener()
+                if estado.tarea_pulso and not estado.tarea_pulso.done():
+                    estado.tarea_pulso.cancel()
+                    estado.tarea_pulso = None
+                if tarea_ritmo:
+                    tarea_ritmo.cancel()
+                    tarea_ritmo = None
+                await tira.color(estado.r_base, estado.g_base, estado.b_base)
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ritmo_detenido"
+                }))
+
+            elif comando == "ritmo_flash_color":
+                estado.r_flash = datos.get("r", 255)
+                estado.g_flash = datos.get("g", 255)
+                estado.b_flash = datos.get("b", 255)
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ritmo_flash_color_actualizado",
+                    "r": estado.r_flash, "g": estado.g_flash, "b": estado.b_flash
+                }))
+
+            elif comando == "ritmo_modo_deteccion":
+                modo = datos.get("modo", "kick")
+                if modo in ("kick", "bass", "full"):
+                    estado.modo_deteccion = modo
+                    detector_ritmo.modo = modo
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ritmo_modo_deteccion_actualizado",
+                    "modo": estado.modo_deteccion
+                }))
+
+            elif comando == "ritmo_flash_only":
+                estado.flash_only = datos.get("activado", False)
+                if estado.flash_only:
+                    await tira.color(
+                        estado.r_flash // 50 or 1,
+                        estado.g_flash // 50 or 1,
+                        estado.b_flash // 50 or 1,
+                    )
+                else:
+                    await tira.color(estado.r_base, estado.g_base, estado.b_base)
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ritmo_flash_only_actualizado",
+                    "flash_only": estado.flash_only
+                }))
+
+            # ── Comandos Ajustes ───────────────────────────────────
+
+            elif comando == "ajustes_obtener":
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ajustes", "ajustes": ajustes.to_dict()
+                }))
+
+            elif comando == "ajustes_guardar":
+                cambios = datos.get("cambios", {})
+                resultado = ajustes.actualizar(cambios)
+                motor.set_fps(resultado.get("fps_transicion", motor.fps))
+                visual_hub.set_titulo(cfg_titulo())
+                visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ajustes", "ajustes": resultado
+                }))
+
+            # ── Comandos Cache de colores ──────────────────────────
+
+            elif comando == "cache_listar":
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "cache_lista",
+                    "canciones": cache.listar()
+                }))
+
+            elif comando == "cache_editar":
+                cancion_id = datos.get("cancion_id")
+                r = datos.get("r", 0)
+                g = datos.get("g", 0)
+                b = datos.get("b", 0)
+                if not cancion_id or not cache.existe(cancion_id):
+                    await websocket.send(json.dumps({
+                        "ok": False, "error": "La canción no está en el cache"
+                    }))
+                    continue
+                color = cache.guardar_usuario(cancion_id, r, g, b)
+                # Si es la canción sonando, aplica el color al instante.
+                if cancion_id == estado.cancion_actual_id:
+                    estado.set_base(*color)
+                    if ajustes.es_gradiente:
+                        await motor.crossfade(*color, duracion=ajustes.get("duracion_crossfade"))
+                    else:
+                        await motor.aplicar(*color)
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "cache_editado",
+                    "cancion_id": cancion_id, "r": color[0], "g": color[1], "b": color[2],
+                    "canciones": cache.listar(),
+                }))
+
+            elif comando == "cache_eliminar":
+                cancion_id = datos.get("cancion_id")
+                existia = cache.eliminar(cancion_id)
+                await websocket.send(json.dumps({
+                    "ok": existia, "evento": "cache_eliminado",
+                    "cancion_id": cancion_id,
+                    "canciones": cache.listar(),
+                }))
+
+            elif comando == "cache_limpiar":
+                cache.limpiar()
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "cache_limpiado", "canciones": []
+                }))
+
+            # ── Comandos Dispositivo BLE ───────────────────────────
+
+            elif comando == "escanear":
+                try:
+                    lista = await TiraLED.escanear_todos(datos.get("tiempo", 8))
+                    await websocket.send(json.dumps({
+                        "ok": True, "evento": "dispositivos", "lista": lista
+                    }))
+                except Exception as e:
+                    await websocket.send(json.dumps({
+                        "ok": False, "evento": "dispositivos",
+                        "error": f"Error al escanear: {e}", "lista": []
+                    }))
+
+            elif comando == "conectar_dispositivo":
+                nueva_mac = datos.get("direccion")
+                if not nueva_mac:
+                    await websocket.send(json.dumps({
+                        "ok": False, "error": "Falta la dirección del dispositivo"
+                    }))
+                    continue
+                try:
+                    # Desconecta el anterior si había uno real.
+                    try:
+                        if dispositivo_conectado:
+                            await tira.desconectar()
+                    except Exception:
+                        pass
+                    await conectar_a(nueva_mac)
+                    cfg = cargar_config()
+                    cfg["direccion_mac"] = nueva_mac
+                    guardar_config(cfg)
+                    await websocket.send(json.dumps({
+                        "ok": True, "evento": "dispositivo_conectado",
+                        "dispositivo": info_dispositivo()
+                    }))
+                except Exception as e:
+                    dispositivo_conectado = False
+                    await websocket.send(json.dumps({
+                        "ok": False, "evento": "dispositivo_conectado",
+                        "error": f"No se pudo conectar: {e}",
+                        "dispositivo": info_dispositivo()
+                    }))
+
+            elif comando == "dispositivo_estado":
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "dispositivo", "dispositivo": info_dispositivo()
+                }))
+
+            # ── Comandos Visual remoto ─────────────────────────────
+
+            elif comando == "visual_iniciar":
+                info = await visual_hub.iniciar()
+                # Sincroniza el estado actual de inmediato.
+                visual_hub.set_color(estado.r_base, estado.g_base, estado.b_base)
+                visual_hub.set_ritmo(ritmo_activado)
+                visual_hub.set_titulo(cfg_titulo())
+                visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+                if estado.cancion_actual_id:
+                    visual_hub.set_cancion(estado.cancion_nombre, estado.cancion_artista)
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "visual", **info
+                }))
+
+            elif comando == "visual_detener":
+                visual_hub.detener()
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "visual", **visual_hub.info()
+                }))
+
+            elif comando == "visual_estado":
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "visual", **visual_hub.info()
+                }))
+
+            else:
+                await websocket.send(json.dumps({
+                    "ok": False, "error": f"Comando desconocido: {comando}"
+                }))
+
+    except websockets.exceptions.ConnectionClosed:
+        print("Cliente desconectado.")
+    finally:
+        if tarea_sincronizacion:
+            tarea_sincronizacion.cancel()
+        ritmo_activado = False
+        detector_ritmo.detener()
+        if estado.tarea_pulso and not estado.tarea_pulso.done():
+            estado.tarea_pulso.cancel()
+            estado.tarea_pulso = None
+        if tarea_ritmo:
+            tarea_ritmo.cancel()
+            tarea_ritmo = None
+        await tira.desconectar()
+
+
+async def _bucle_ritmo(websocket, estado: EstadoLED, detector):
+    """Monitorea beats y pulsa dinámicamente según energía (rango 0-100%).
+
+    El bucle NO termina en silencios: se mantiene activo (LED apagado) y vuelve
+    a reaccionar en cuanto haya música. Solo se detiene con ritmo_detener.
+    """
+    import time
+    _ultimo_beat = time.time()      # evita apagar/salir en el arranque
+    _silencio_contador = 0
+    _apagado = False                # evita reenviar (0,0,0) en bucle
+
+    async def _apagar():
+        nonlocal _apagado
+        if not _apagado:
+            await estado.tira.color(0, 0, 0)
+            _apagado = True
+
+    try:
+        while True:
+            ahora = time.time()
+            beat_info = detector.get_beat_info()
+
+            if beat_info.get("is_silent", False):
+                _silencio_contador += 1
+                if _silencio_contador > 2:
+                    if estado.tarea_pulso and not estado.tarea_pulso.done():
+                        estado.tarea_pulso.cancel()
+                        estado.tarea_pulso = None
+                    await _apagar()
+                await asyncio.sleep(0.01)
+                continue
+            else:
+                _silencio_contador = 0
+
+            energy_intensity = beat_info.get("energy_intensity", 0.0)
+
+            if detector.hubo_beat:
+                if estado.tarea_pulso and not estado.tarea_pulso.done():
+                    estado.tarea_pulso.cancel()
+                estado.tarea_pulso = asyncio.create_task(
+                    _pulso_beat(estado, energy_intensity=energy_intensity)
+                )
+                _ultimo_beat = ahora
+                _apagado = False
+                # Difunde el beat al visual remoto y a la app.
+                visual_hub.pulse(energy_intensity)
+                await _enviar_json(websocket, {
+                    "ok": True, "evento": "beat", "energy": round(energy_intensity, 3)
+                })
+
+            elif ahora - _ultimo_beat > 2.0:
+                # Mucho rato sin beats: apaga pero SIGUE escuchando.
+                if estado.tarea_pulso and not estado.tarea_pulso.done():
+                    estado.tarea_pulso.cancel()
+                    estado.tarea_pulso = None
+                await _apagar()
+
+            else:
+                if energy_intensity < 0.15:
+                    if not (estado.tarea_pulso and not estado.tarea_pulso.done()):
+                        await _apagar()
+                elif energy_intensity < 0.4:
+                    if not (estado.tarea_pulso and not estado.tarea_pulso.done()):
+                        intensity = energy_intensity
+                        await estado.tira.color(
+                            int(estado.r_base * intensity),
+                            int(estado.g_base * intensity),
+                            int(estado.b_base * intensity),
+                        )
+                        _apagado = False
+                elif energy_intensity < 0.7:
+                    if not (estado.tarea_pulso and not estado.tarea_pulso.done()):
+                        await estado.tira.color(estado.r_base, estado.g_base, estado.b_base)
+                        _apagado = False
+
+            await asyncio.sleep(0.01)
+    except asyncio.CancelledError:
+        pass
+
+
+async def bucle_sincronizacion(websocket, estado: EstadoLED, spotify, cache, ajustes, obtener_modo):
+    """Monitorea Spotify y cambia el color de la tira con transiciones suaves.
+
+    - Cache HIT  → transición directa color→color.
+    - Cache MISS → baja el brillo mientras analiza la portada, luego sube el
+      brillo con el color nuevo (y lo guarda en cache).
+    El modo (gradiente/brusco) sale de los ajustes del usuario.
+    """
+    motor = estado.motor
+    cancion_anterior_id = None
+
+    def _intervalo(cancion):
+        """Polling adaptativo: rápido cerca del final de la canción."""
+        base = ajustes.get("intervalo_spotify")
+        if cancion and cancion.get("reproduciendo", True):
+            dur = cancion.get("duration_ms", 0) or 0
+            prog = cancion.get("progress_ms", 0) or 0
+            if dur and prog:
+                restante = (dur - prog) / 1000.0
+                if 0 <= restante < 2.5:
+                    return 0.3
+        return base
+
+    try:
+        while True:
+            spotify.refrescar_token()
+
+            cancion = await spotify.obtener_cancion_actual()
+            if cancion and cancion["cancion_id"] != cancion_anterior_id:
+                cancion_anterior_id = cancion["cancion_id"]
+                estado.cancion_actual_id = cancion["cancion_id"]
+                estado.cancion_nombre = cancion.get("nombre", "")
+                estado.cancion_artista = cancion.get("artista", "")
+                modo = obtener_modo()
+                gradiente = ajustes.es_gradiente
+
+                color_cache = cache.obtener_color(cancion["cancion_id"])
+
+                if color_cache is not None:
+                    # ── CACHE HIT: cambio directo de un color a otro ──
+                    r, g, b = color_cache
+                    if gradiente:
+                        await motor.crossfade(r, g, b, duracion=ajustes.get("duracion_crossfade"))
+                    else:
+                        await motor.aplicar(r, g, b)
+                    estado.set_base(r, g, b)
+                    fuente = "usuario" if cache.es_de_usuario(cancion["cancion_id"]) else "cache"
+                    await _notificar_color(websocket, cancion, r, g, b, fuente)
+                    await asyncio.sleep(_intervalo(cancion))
+                    continue
+
+                # ── CACHE MISS: bajar brillo mientras analiza, subir con color nuevo ──
+                base_previa = motor.color_actual
+                tarea_fade_out = None
+                if gradiente:
+                    tarea_fade_out = asyncio.create_task(
+                        motor.fade_a_negro(duracion=ajustes.get("duracion_fade_out"))
+                    )
+
+                color = await calcular_color_cancion(spotify, cancion, modo)
+
+                if gradiente and tarea_fade_out is not None:
+                    # Asegura que el fade a negro terminó antes de subir de nuevo.
+                    try:
+                        await tarea_fade_out
+                    except asyncio.CancelledError:
+                        pass
+
+                if color is None:
+                    # No se pudo calcular: vuelve a la base previa (no cachea).
+                    if gradiente:
+                        await motor.crossfade(*base_previa, duracion=ajustes.get("duracion_fade_in"))
+                    continue
+
+                r, g, b = color
+                # Guarda en cache (respeta un posible color de usuario previo).
+                r, g, b = cache.guardar_auto(
+                    cancion["cancion_id"], r, g, b,
+                    cancion.get("nombre", ""), cancion.get("artista", ""),
+                )
+
+                if gradiente:
+                    await motor.fade_desde_negro(r, g, b, duracion=ajustes.get("duracion_fade_in"))
+                else:
+                    await motor.aplicar(r, g, b)
+
+                estado.set_base(r, g, b)
+                fuente = "usuario" if cache.es_de_usuario(cancion["cancion_id"]) else "auto"
+                await _notificar_color(websocket, cancion, r, g, b, fuente)
+
+            elif cancion is None:
+                cancion_anterior_id = None
+                estado.cancion_actual_id = None
+
+            await asyncio.sleep(_intervalo(cancion))
+
+    except asyncio.CancelledError:
+        print("Sincronización detenida.")
+
+
+async def _notificar_color(websocket, cancion, r, g, b, fuente):
+    visual_hub.set_cancion(cancion.get("nombre", ""), cancion.get("artista", ""))
+    await _enviar_json(websocket, {
+        "ok": True, "evento": "spotify_color",
+        "r": r, "g": g, "b": b,
+        "cancion": cancion.get("nombre", ""),
+        "artista": cancion.get("artista", ""),
+        "cancion_id": cancion.get("cancion_id", ""),
+        "url_portada": cancion.get("url_portada", ""),
+        "fuente": fuente,
+    })
+
+
+def mapear_caracteristicas_a_rgb(caracteristicas: dict) -> tuple[int, int, int]:
+    """Convierte características de audio en un color RGB.
+
+    - energia → brillo (0-255)
+    - valencia → matiz (0=azul frío, 1=rojo cálido)
+    - bailabilidad → qué tanto mezclar con blanco
+    """
+    energia = caracteristicas.get("energia", 0.5)
+    valencia = caracteristicas.get("valencia", 0.5)
+    bailabilidad = caracteristicas.get("bailabilidad", 0.5)
+
+    matiz = int(240 - (valencia * 240))
+    saturacion = 200 + int(bailabilidad * 55)
+    brillo = max(50, int(energia * 255))
+
+    return hsv_a_rgb(matiz % 360, min(saturacion, 255), min(brillo, 255))
+
+
+def hsv_a_rgb(h: int, s: int, v: int) -> tuple[int, int, int]:
+    """Convierte HSV (h=0-360, s=0-255, v=0-255) a RGB."""
+    if s == 0:
+        return (v, v, v)
+
+    region = h // 60
+    resto = h % 60
+    p = v * (255 - s) // 255
+    q = v * (255 - (s * resto) // 60) // 255
+    t = v * (255 - (s * (60 - resto)) // 60) // 255
+
+    return [(v, t, p), (q, v, p), (p, v, t), (p, q, v), (t, p, v), (v, p, q)][region % 6]
+
+
+async def _auth_spotify_task(websocket, spotify):
+    """Ejecuta la autenticación en segundo plano y notifica al frontend."""
+    try:
+        exitoso = await spotify.autenticar()
+        if exitoso:
+            await _enviar_json(websocket, {"ok": True, "evento": "spotify_autenticado"})
+        else:
+            await _enviar_json(websocket, {
+                "ok": False, "evento": "spotify_error",
+                "error": "No se pudo autenticar con Spotify"
+            })
+    except Exception as e:
+        await _enviar_json(websocket, {
+            "ok": False, "evento": "spotify_error",
+            "error": f"Error de autenticación: {str(e)}"
+        })
+
+
+async def main():
+    """Inicia el servidor WebSocket."""
+    print(f"Servidor WebSocket iniciado en ws://localhost:{PUERTO}")
+    async with websockets.serve(manejar_cliente, "localhost", PUERTO):
+        await asyncio.Future()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

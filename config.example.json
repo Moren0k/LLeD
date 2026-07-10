@@ -1,0 +1,5 @@
+{
+  "_comentario": "Copia este archivo a config.json. La MAC se autocompleta al escanear desde la app. El client_id de Spotify ya viene horneado (PKCE); solo poné uno propio si querés usar tu app de Spotify.",
+  "direccion_mac": null,
+  "spotify_cliente_id": ""
+}
