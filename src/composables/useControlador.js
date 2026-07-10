@@ -58,6 +58,7 @@ export function useControlador() {
     ambilight_peso_bordes: 0.5,
     ambilight_peso_dominante: 0.3,
     ambilight_reactivo_audio: true,
+    ambilight_sensibilidad_audio: 0.6,
     ambilight_monitor: 0,
   })
   const biblioteca = ref([])

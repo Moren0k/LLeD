@@ -398,3 +398,68 @@ class CompleteDSPEngine:
             "is_quiet": energy_info["is_quiet"],
             "is_loud": energy_info["is_loud"],
         }
+
+
+class DetectorImpacto:
+    """Detecta sonidos FUERTES REPENTINOS (golpes, crujidos, explosiones, portazos).
+
+    Pensado para inmersión en películas (Cine Mode), NO para música. Reacciona a
+    una SUBIDA brusca de volumen sobre una línea base lenta, y rechaza diálogos
+    exigiendo o bien contenido fuera de la banda de voz (graves/agudos) o bien un
+    salto muy grande. Es independiente del detector de beats (no lo afecta).
+    """
+
+    def __init__(self, sr: int = 48000):
+        self.sr = sr
+        self.baseline_db = -60.0
+        self.hist_db = deque(maxlen=180)  # ~pocos segundos de historia
+        self.umbral_db = 9.0              # ajustable por sensibilidad
+        self._init = False
+
+    def set_sensibilidad(self, s: float) -> None:
+        """s en 0..1: 0 = poco sensible (salto grande), 1 = muy sensible."""
+        s = max(0.0, min(1.0, float(s)))
+        self.umbral_db = 14.0 - 9.0 * s   # 14 dB (poco) .. 5 dB (mucho)
+
+    def analyze(self, magnitude: np.ndarray, sr: int = None) -> dict:
+        sr = sr or self.sr
+        n_fft = (len(magnitude) - 1) * 2
+        freqs = np.fft.rfftfreq(n_fft, 1 / sr)
+
+        energy = float(np.sqrt(np.mean(magnitude ** 2)))
+        db = 20.0 * np.log10(energy + 1e-9)
+        if not self._init:
+            self.baseline_db = db
+            self._init = True
+        self.hist_db.append(db)
+
+        sub = (freqs >= 20) & (freqs <= 250)
+        voz = (freqs > 250) & (freqs <= 4000)
+        agudo = (freqs > 4000) & (freqs <= 16000)
+        e_sub = float(np.sum(magnitude[sub] ** 2))
+        e_voz = float(np.sum(magnitude[voz] ** 2))
+        e_agudo = float(np.sum(magnitude[agudo] ** 2))
+        total = e_sub + e_voz + e_agudo + 1e-9
+        no_habla = (e_sub + e_agudo) / total
+
+        subida = db - self.baseline_db
+        lo = min(self.hist_db)
+        hi = max(self.hist_db)
+        nivel = 0.0 if (hi - lo) < 1e-6 else float(np.clip((db - lo) / (hi - lo), 0.0, 1.0))
+
+        # Línea base lenta (~1-2 s).
+        self.baseline_db += 0.02 * (db - self.baseline_db)
+
+        fuerte = (subida >= self.umbral_db) and (db > lo + 8.0)
+        # Salto moderado exige contenido no-voz; salto enorme dispara igual.
+        es_impacto = fuerte and (no_habla >= 0.30 or subida >= self.umbral_db * 1.6)
+        fuerza = float(np.clip((subida - self.umbral_db) / 12.0, 0.0, 1.0)) if es_impacto else 0.0
+
+        return {
+            "nivel": nivel,
+            "subida_db": float(subida),
+            "no_habla": float(no_habla),
+            "es_impacto": bool(es_impacto),
+            "fuerza": fuerza,
+            "silencio": nivel < 0.05,
+        }

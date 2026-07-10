@@ -53,8 +53,16 @@
         <input type="checkbox" :checked="ctrl.ajustes.ambilight_reactivo_audio" @change="ctrl.setAmbilight('ambilight_reactivo_audio', $event.target.checked, true)" />
         <span class="track"><span class="thumb"></span></span>
         <span class="toggle-txt">Reactivo al audio</span>
-        <AyudaInfo>Usa el sonido del sistema para modular la intensidad y disparar destellos en golpes fuertes (explosiones, pasos, screamers). Necesita "Stereo Mix" activado.</AyudaInfo>
+        <AyudaInfo>Usa el sonido del sistema para modular la intensidad y disparar destellos en sonidos fuertes REPENTINOS (explosiones, crujidos, portazos, screamers). Está diseñado para NO activarse con los diálogos. Necesita "Stereo Mix" activado.</AyudaInfo>
       </label>
+
+      <div class="fila" v-if="ctrl.ajustes.ambilight_reactivo_audio">
+        <span class="field-label">Sensibilidad</span>
+        <input class="slider" type="range" min="0" max="1" step="0.05"
+          :value="ctrl.ajustes.ambilight_sensibilidad_audio"
+          @input="ctrl.setAmbilight('ambilight_sensibilidad_audio', Number($event.target.value))" />
+        <span class="valor">{{ Math.round(ctrl.ajustes.ambilight_sensibilidad_audio * 100) }}%</span>
+      </div>
     </div>
 
     <!-- Ajustes finos -->

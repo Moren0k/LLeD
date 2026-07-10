@@ -703,8 +703,10 @@ async def manejar_cliente(websocket):
                 )
                 capturador.iniciar()
                 ambilight_uso_audio = bool(ajustes.get("ambilight_reactivo_audio")) and detector_ritmo.disponible
-                if ambilight_uso_audio and not ritmo_activado:
-                    detector_ritmo.iniciar()
+                if ambilight_uso_audio:
+                    detector_ritmo.set_sensibilidad_impacto(ajustes.get("ambilight_sensibilidad_audio"))
+                    if not ritmo_activado:
+                        detector_ritmo.iniciar()
                 ambilight_activado = True
                 if tarea_ambilight:
                     tarea_ambilight.cancel()
@@ -730,6 +732,8 @@ async def manejar_cliente(websocket):
             elif comando == "ambilight_config":
                 cambios = datos.get("cambios", {})
                 ajustes.actualizar({k: v for k, v in cambios.items() if k.startswith("ambilight_")})
+                if "ambilight_sensibilidad_audio" in cambios:
+                    detector_ritmo.set_sensibilidad_impacto(ajustes.get("ambilight_sensibilidad_audio"))
                 capturador.configurar(
                     fps=ajustes.get("ambilight_fps"),
                     suavizado=ajustes.get("ambilight_suavizado"),
@@ -876,11 +880,15 @@ async def _bucle_ambilight(websocket, estado: EstadoLED, capturador, detector, a
             energia = 0.0
             hubo = False
             silencio = False
+            fuerza = 0.0
             if detector is not None:
-                bi = detector.get_beat_info()
-                silencio = bi.get("is_silent", False)
-                energia = bi.get("energy_intensity", 0.0)
-                hubo = detector.hubo_beat
+                # Cine Mode usa el detector de IMPACTOS (golpes fuertes repentinos),
+                # con nivel refrescado cada frame — no los beats musicales.
+                ii = detector.get_impacto_info()
+                silencio = ii.get("silencio", False)
+                energia = ii.get("nivel", 0.0)
+                hubo = detector.hubo_impacto
+                fuerza = ii.get("fuerza", 0.0)
 
             # Captura negra (DRM): usar solo audio si hay.
             if info.get("drm_negro"):
@@ -909,8 +917,9 @@ async def _bucle_ambilight(websocket, estado: EstadoLED, capturador, detector, a
             b2 = int(b * intensidad)
 
             if detector is not None and hubo:
-                # Flash: color de escena a intensidad alta (instantáneo).
-                inten_flash = min(1.0, intensidad + 0.6)
+                # Flash: color de escena a intensidad alta (instantáneo), según la
+                # fuerza del impacto (golpe leve = destello suave; fuerte = full).
+                inten_flash = min(1.0, intensidad + 0.35 + 0.65 * fuerza)
                 await motor.aplicar(int(r * inten_flash), int(g * inten_flash), int(b * inten_flash))
             else:
                 await motor.crossfade(r2, g2, b2, duracion=0.12)

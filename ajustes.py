@@ -54,6 +54,7 @@ DEFAULTS: dict[str, Any] = {
     "ambilight_peso_bordes": 0.5,      # 0 - 1
     "ambilight_peso_dominante": 0.3,   # 0 - 1
     "ambilight_reactivo_audio": True,
+    "ambilight_sensibilidad_audio": 0.6,  # 0 - 1 (sensibilidad a golpes/impactos)
     "ambilight_monitor": 0,            # índice de monitor (0 = todos)
 }
 
@@ -109,7 +110,8 @@ def _validar(clave: str, valor: Any) -> Any:
     if clave == "ambilight_saturacion":
         return _clamp_float(valor, 1.0, 2.5, DEFAULTS[clave])
     if clave in ("ambilight_intensidad_min", "ambilight_intensidad_max",
-                 "ambilight_peso_bordes", "ambilight_peso_dominante"):
+                 "ambilight_peso_bordes", "ambilight_peso_dominante",
+                 "ambilight_sensibilidad_audio"):
         return _clamp_float(valor, 0.0, 1.0, DEFAULTS[clave])
     if clave == "ambilight_reactivo_audio":
         return bool(valor)

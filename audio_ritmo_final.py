@@ -19,7 +19,7 @@ except ImportError:
     pa_rt = None
     _PA_DISPONIBLE = False
 
-from dsp_engine_v3 import CompleteDSPEngine
+from dsp_engine_v3 import CompleteDSPEngine, DetectorImpacto
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,14 @@ class DetectorRitmo:
         self._dsp_engine = CompleteDSPEngine(sr=self._tasa)
         self._audio_buffer = np.zeros(FFT_SIZE)
         self._last_beat_times = deque(maxlen=20)
+
+        # Detector de impactos para Cine Mode (independiente del ritmo).
+        self._impacto = DetectorImpacto(sr=self._tasa)
+        self._impacto_flag = False
+        self._impacto_fuerza = 0.0
+        self._ultimo_impacto = 0.0
+        self._nivel = 0.0
+        self._silencio_actual = True
 
         self._encontrar_loopback()
 
@@ -117,6 +125,17 @@ class DetectorRitmo:
         # Motor DSP (FASES 1, 2, 3)
         result = self._dsp_engine.process_frame(magnitude)
 
+        # Detector de impactos (Cine Mode) — corre CADA frame, refresca nivel.
+        imp = self._impacto.analyze(magnitude, self._tasa)
+        ahora_imp = time.time()
+        with self._lock:
+            self._nivel = imp["nivel"]
+            self._silencio_actual = imp["silencio"]
+            if imp["es_impacto"] and (ahora_imp - self._ultimo_impacto) > 0.12:
+                self._impacto_flag = True
+                self._impacto_fuerza = imp["fuerza"]
+                self._ultimo_impacto = ahora_imp
+
         # Decisión de beat
         if result["is_beat"]:
             ahora = time.time()
@@ -146,6 +165,28 @@ class DetectorRitmo:
         """Retorna información detallada del último beat."""
         with self._lock:
             return self._beat_info.copy() if self._beat_info else {}
+
+    @property
+    def hubo_impacto(self) -> bool:
+        """Consume el flag de impacto (golpe fuerte repentino) para Cine Mode."""
+        with self._lock:
+            if self._impacto_flag:
+                self._impacto_flag = False
+                return True
+            return False
+
+    def get_impacto_info(self) -> dict:
+        """Nivel de sonido y silencio ACTUALES (refrescado cada frame) + fuerza del último impacto."""
+        with self._lock:
+            return {
+                "nivel": self._nivel,
+                "silencio": self._silencio_actual,
+                "fuerza": self._impacto_fuerza,
+            }
+
+    def set_sensibilidad_impacto(self, s: float) -> None:
+        """Ajusta la sensibilidad del detector de impactos (0..1). No afecta el ritmo."""
+        self._impacto.set_sensibilidad(s)
 
     def iniciar(self) -> bool:
         if not _PA_DISPONIBLE:
