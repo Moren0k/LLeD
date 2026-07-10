@@ -53,6 +53,30 @@ class WebSocketFake:
         return ev[-1] if ev else None
 
 
+class CapturadorFake:
+    """Capturador de pantalla simulado (no toca la pantalla real)."""
+
+    def __init__(self, *a, **k) -> None:
+        self.iniciado = False
+
+    @property
+    def disponible(self) -> bool:
+        return True
+
+    def configurar(self, **kwargs) -> None:
+        pass
+
+    def iniciar(self) -> bool:
+        self.iniciado = True
+        return True
+
+    def detener(self) -> None:
+        self.iniciado = False
+
+    def get_color_info(self) -> dict:
+        return {"r": 120, "g": 60, "b": 20, "luminancia": 0.4, "saturacion": 0.5, "drm_negro": False}
+
+
 def cancion(cid: str, nombre: str = "Tema", artista: str = "Artista", portada: str = "http://x/p.jpg") -> dict:
     return {
         "cancion_id": cid,

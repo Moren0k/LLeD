@@ -15,6 +15,7 @@ hiddenimports = []
 for paquete in ("sklearn", "scipy", "numpy", "spotipy", "bleak",
                 "bleak.backends.winrt", "winrt"):
     hiddenimports += collect_submodules(paquete)
+hiddenimports += collect_submodules("mss")
 hiddenimports += [
     "pyaudiowpatch",
     "websockets",

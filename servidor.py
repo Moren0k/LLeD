@@ -36,6 +36,7 @@ from typing import Optional
 import websockets
 
 from ajustes import Ajustes
+from ambilight import CapturadorPantalla, listar_monitores
 from audio_ritmo_final import DetectorRitmo
 from cache_colores import CacheColores, FUENTE_AUTO, FUENTE_USUARIO
 from extractor_color import portada_a_rgb
@@ -265,6 +266,11 @@ async def manejar_cliente(websocket):
     ritmo_activado = False
     tarea_ritmo: Optional[asyncio.Task] = None
 
+    capturador = CapturadorPantalla()
+    ambilight_activado = False
+    ambilight_uso_audio = False
+    tarea_ambilight: Optional[asyncio.Task] = None
+
     COMANDOS_LED = {"encender", "apagar", "color", "brillo", "probar", "arcoiris"}
 
     try:
@@ -380,6 +386,8 @@ async def manejar_cliente(websocket):
                     "ajustes": ajustes.to_dict(),
                     "dispositivo": info_dispositivo(),
                     "visual": visual_hub.info(),
+                    "ambilight_activado": ambilight_activado,
+                    "ambilight_disponible": capturador.disponible,
                 }))
 
             elif comando == "spotify_info":
@@ -659,6 +667,81 @@ async def manejar_cliente(websocket):
                     "ok": True, "evento": "visual", **visual_hub.info()
                 }))
 
+            # ── Comandos Cine Mode (ambilight) ─────────────────────
+
+            elif comando == "ambilight_monitores":
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ambilight_monitores",
+                    "monitores": listar_monitores()
+                }))
+
+            elif comando == "ambilight_iniciar":
+                if not capturador.disponible:
+                    await websocket.send(json.dumps({
+                        "ok": False, "evento": "ambilight_error",
+                        "error": "Captura de pantalla no disponible (mss)"
+                    }))
+                    continue
+                if not dispositivo_conectado:
+                    await websocket.send(json.dumps({
+                        "ok": False, "evento": "ambilight_error",
+                        "error": "Conectá un dispositivo LED primero"
+                    }))
+                    continue
+                # Exclusión mutua con la sincronización de Spotify.
+                if tarea_sincronizacion:
+                    tarea_sincronizacion.cancel()
+                    tarea_sincronizacion = None
+                    sincronizando = False
+                capturador.configurar(
+                    fps=ajustes.get("ambilight_fps"),
+                    suavizado=ajustes.get("ambilight_suavizado"),
+                    saturacion=ajustes.get("ambilight_saturacion"),
+                    peso_bordes=ajustes.get("ambilight_peso_bordes"),
+                    peso_dominante=ajustes.get("ambilight_peso_dominante"),
+                    monitor=ajustes.get("ambilight_monitor"),
+                )
+                capturador.iniciar()
+                ambilight_uso_audio = bool(ajustes.get("ambilight_reactivo_audio")) and detector_ritmo.disponible
+                if ambilight_uso_audio and not ritmo_activado:
+                    detector_ritmo.iniciar()
+                ambilight_activado = True
+                if tarea_ambilight:
+                    tarea_ambilight.cancel()
+                tarea_ambilight = asyncio.create_task(
+                    _bucle_ambilight(websocket, estado, capturador,
+                                     detector_ritmo if ambilight_uso_audio else None, ajustes)
+                )
+                await websocket.send(json.dumps({"ok": True, "evento": "ambilight_activado"}))
+
+            elif comando == "ambilight_detener":
+                ambilight_activado = False
+                if tarea_ambilight:
+                    tarea_ambilight.cancel()
+                    tarea_ambilight = None
+                capturador.detener()
+                # Detener el detector solo si lo arrancó ambilight (no el modo ritmo).
+                if ambilight_uso_audio and not ritmo_activado:
+                    detector_ritmo.detener()
+                ambilight_uso_audio = False
+                await tira.color(estado.r_base, estado.g_base, estado.b_base)
+                await websocket.send(json.dumps({"ok": True, "evento": "ambilight_detenido"}))
+
+            elif comando == "ambilight_config":
+                cambios = datos.get("cambios", {})
+                ajustes.actualizar({k: v for k, v in cambios.items() if k.startswith("ambilight_")})
+                capturador.configurar(
+                    fps=ajustes.get("ambilight_fps"),
+                    suavizado=ajustes.get("ambilight_suavizado"),
+                    saturacion=ajustes.get("ambilight_saturacion"),
+                    peso_bordes=ajustes.get("ambilight_peso_bordes"),
+                    peso_dominante=ajustes.get("ambilight_peso_dominante"),
+                    monitor=ajustes.get("ambilight_monitor"),
+                )
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ajustes", "ajustes": ajustes.to_dict()
+                }))
+
             else:
                 await websocket.send(json.dumps({
                     "ok": False, "error": f"Comando desconocido: {comando}"
@@ -677,6 +760,11 @@ async def manejar_cliente(websocket):
         if tarea_ritmo:
             tarea_ritmo.cancel()
             tarea_ritmo = None
+        ambilight_activado = False
+        capturador.detener()
+        if tarea_ambilight:
+            tarea_ambilight.cancel()
+            tarea_ambilight = None
         await tira.desconectar()
 
 
@@ -756,6 +844,84 @@ async def _bucle_ritmo(websocket, estado: EstadoLED, detector):
                         _apagado = False
 
             await asyncio.sleep(0.01)
+    except asyncio.CancelledError:
+        pass
+
+
+def _mapear_intensidad(luminancia, saturacion, imin, imax):
+    """Escena oscura → tenue; brillante/vívida → intensa."""
+    nivel = max(0.0, min(1.0, (luminancia ** 0.7) * 0.8 + saturacion * 0.2))
+    return imin + (imax - imin) * nivel
+
+
+async def _bucle_ambilight(websocket, estado: EstadoLED, capturador, detector, ajustes):
+    """Cine Mode: fusiona color de pantalla + audio y aplica un color ambiente.
+
+    - Color base = color de la escena escalado por una intensidad que sube con la
+      luminancia/saturación (mar oscuro → tenue; cielo/sol → intenso).
+    - Si hay audio (detector), la energía sube la intensidad y cada beat/onset
+      dispara un flash teñido con el color de la escena (explosión, pasos, screamer).
+    - Si la captura sale negra (DRM), degrada a solo-audio con un tono cálido tenue.
+    """
+    motor = estado.motor
+    try:
+        while True:
+            info = capturador.get_color_info()
+            r, g, b = info["r"], info["g"], info["b"]
+            imin = ajustes.get("ambilight_intensidad_min")
+            imax = ajustes.get("ambilight_intensidad_max")
+            intensidad = _mapear_intensidad(info["luminancia"], info["saturacion"], imin, imax)
+            fps = max(10, int(ajustes.get("ambilight_fps")))
+
+            energia = 0.0
+            hubo = False
+            silencio = False
+            if detector is not None:
+                bi = detector.get_beat_info()
+                silencio = bi.get("is_silent", False)
+                energia = bi.get("energy_intensity", 0.0)
+                hubo = detector.hubo_beat
+
+            # Captura negra (DRM): usar solo audio si hay.
+            if info.get("drm_negro"):
+                if detector is not None and not silencio and energia > 0.05:
+                    calido = (255, 120, 40)
+                    inten = imin + (imax - imin) * energia
+                    obj = tuple(int(c * inten) for c in calido)
+                    await motor.crossfade(*obj, duracion=0.12)
+                else:
+                    await motor.crossfade(0, 0, 0, duracion=0.3)
+                estado.set_base(motor.r, motor.g, motor.b)
+                await _enviar_json(websocket, {
+                    "ok": True, "evento": "ambilight_color",
+                    "r": motor.r, "g": motor.g, "b": motor.b,
+                    "intensidad": round(intensidad, 3), "drm": True,
+                })
+                await asyncio.sleep(1.0 / fps)
+                continue
+
+            # El audio sube la intensidad del ambiente.
+            if detector is not None:
+                intensidad = max(intensidad, energia)
+
+            r2 = int(r * intensidad)
+            g2 = int(g * intensidad)
+            b2 = int(b * intensidad)
+
+            if detector is not None and hubo:
+                # Flash: color de escena a intensidad alta (instantáneo).
+                inten_flash = min(1.0, intensidad + 0.6)
+                await motor.aplicar(int(r * inten_flash), int(g * inten_flash), int(b * inten_flash))
+            else:
+                await motor.crossfade(r2, g2, b2, duracion=0.12)
+
+            estado.set_base(r2, g2, b2)
+            await _enviar_json(websocket, {
+                "ok": True, "evento": "ambilight_color",
+                "r": motor.r, "g": motor.g, "b": motor.b,
+                "intensidad": round(intensidad, 3), "drm": False,
+            })
+            await asyncio.sleep(1.0 / fps)
     except asyncio.CancelledError:
         pass
 
