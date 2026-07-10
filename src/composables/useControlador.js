@@ -50,9 +50,24 @@ export function useControlador() {
     visual_titulo_escala: 1.0,
     visual_titulo_x: 0.5,
     visual_titulo_y: 0.85,
+    ambilight_fps: 15,
+    ambilight_suavizado: 0.6,
+    ambilight_saturacion: 1.4,
+    ambilight_intensidad_min: 0.08,
+    ambilight_intensidad_max: 1.0,
+    ambilight_peso_bordes: 0.5,
+    ambilight_peso_dominante: 0.3,
+    ambilight_reactivo_audio: true,
+    ambilight_sensibilidad_audio: 0.6,
+    ambilight_monitor: 0,
   })
   const biblioteca = ref([])
   const mostrarFull = ref(false)
+
+  // ── Cine Mode (ambilight) ──
+  const ambilightActivado = ref(false)
+  const ambilightDisponible = ref(false)
+  const monitores = ref([])
 
   // ── Dispositivo BLE ──
   const dispositivo = reactive({ direccion: null, conectado: false })
@@ -182,6 +197,8 @@ export function useControlador() {
     }, 200)
   }
   function cargarBiblioteca() { enviar('cache_listar') }
+  function borrarHistorial() { enviar('cache_limpiar') }
+  function resetearAjustes() { enviar('ajustes_reset') }
 
   // ── Dispositivo ──
   function escanear() {
@@ -196,6 +213,20 @@ export function useControlador() {
   function detenerVisual() { enviar('visual_detener') }
   function abrirVisualFull() { mostrarFull.value = true }
   function cerrarVisualFull() { mostrarFull.value = false }
+
+  // ── Cine Mode ──
+  function toggleAmbilight() {
+    enviar(ambilightActivado.value ? 'ambilight_detener' : 'ambilight_iniciar')
+  }
+  function cargarMonitores() { enviar('ambilight_monitores') }
+  let debounceAmbi = null
+  function setAmbilight(clave, valor, inmediato = false) {
+    ajustes[clave] = valor
+    const enviarlo = () => enviar('ambilight_config', { cambios: { [clave]: valor } })
+    clearTimeout(debounceAmbi)
+    if (inmediato) enviarlo()
+    else debounceAmbi = setTimeout(enviarlo, 150)
+  }
 
   // ── Ajuste genérico (con debounce para sliders/arrastre) ──
   let debounceAjuste = null
@@ -267,6 +298,21 @@ export function useControlador() {
     if (d.ajustes) Object.assign(ajustes, d.ajustes)
     if (d.dispositivo) Object.assign(dispositivo, d.dispositivo)
     if (d.visual) Object.assign(visual, d.visual)
+    if (d.ambilight_activado !== undefined) ambilightActivado.value = d.ambilight_activado
+    if (d.ambilight_disponible !== undefined) ambilightDisponible.value = d.ambilight_disponible
+  })
+
+  on('ambilight_activado', () => { ambilightActivado.value = true })
+  on('ambilight_detenido', () => { ambilightActivado.value = false })
+  on('ambilight_error', (d) => {
+    ambilightActivado.value = false
+    agregarLog(`Cine Mode: ${d.error}`)
+  })
+  on('ambilight_monitores', (d) => { monitores.value = d.monitores || [] })
+  on('ambilight_color', (d) => {
+    colorFondo.r = d.r
+    colorFondo.g = d.g
+    colorFondo.b = d.b
   })
 
   on('dispositivos', (d) => {
@@ -362,6 +408,7 @@ export function useControlador() {
     spotifyModo, cancionActual, artistaActual, portadaActual, fuenteColorActual,
     ajustes, biblioteca, mostrarFull,
     dispositivo, dispositivos, escaneando, visual, beatActivo, beatTick, beatEnergia,
+    ambilightActivado, ambilightDisponible, monitores,
     // constantes
     modosDeteccion, coloresFlash, slidersTransicion,
     // acciones
@@ -370,7 +417,9 @@ export function useControlador() {
     cambiarModoSync, pedirEstadoSpotify,
     toggleRitmo, cambiarFlashColor, flashColorCancion, toggleFlashOnly, cambiarModoDeteccion,
     cambiarModoTransicion, cambiarDuracion, cargarBiblioteca, editarColorCancion, eliminarCancion,
+    borrarHistorial, resetearAjustes,
     escanear, conectarDispositivo, iniciarVisual, detenerVisual,
     abrirVisualFull, cerrarVisualFull, setAjuste,
+    toggleAmbilight, cargarMonitores, setAmbilight,
   })
 }

@@ -45,6 +45,17 @@ DEFAULTS: dict[str, Any] = {
     # Tipo de visual y si los elementos se desplazan por la pantalla.
     "visual_tipo": "aurora",       # "aurora" | "orbes" | "ondas"
     "visual_movimiento": True,
+    # Cine Mode (ambilight): color ambiente según la pantalla.
+    "ambilight_fps": 15,               # 10 - 30
+    "ambilight_suavizado": 0.6,        # 0 - 0.95 (EMA, mayor = más suave)
+    "ambilight_saturacion": 1.4,       # 1.0 - 2.5
+    "ambilight_intensidad_min": 0.08,  # 0 - 1
+    "ambilight_intensidad_max": 1.0,   # 0 - 1
+    "ambilight_peso_bordes": 0.5,      # 0 - 1
+    "ambilight_peso_dominante": 0.3,   # 0 - 1
+    "ambilight_reactivo_audio": True,
+    "ambilight_sensibilidad_audio": 0.6,  # 0 - 1 (sensibilidad a golpes/impactos)
+    "ambilight_monitor": 0,            # índice de monitor (0 = todos)
 }
 
 VISUALES_VALIDOS = ("aurora", "orbes", "ondas")
@@ -92,6 +103,20 @@ def _validar(clave: str, valor: Any) -> Any:
         return valor if valor in VISUALES_VALIDOS else DEFAULTS[clave]
     if clave == "visual_movimiento":
         return bool(valor)
+    if clave == "ambilight_fps":
+        return _clamp_int(valor, 10, 30, DEFAULTS[clave])
+    if clave == "ambilight_suavizado":
+        return _clamp_float(valor, 0.0, 0.95, DEFAULTS[clave])
+    if clave == "ambilight_saturacion":
+        return _clamp_float(valor, 1.0, 2.5, DEFAULTS[clave])
+    if clave in ("ambilight_intensidad_min", "ambilight_intensidad_max",
+                 "ambilight_peso_bordes", "ambilight_peso_dominante",
+                 "ambilight_sensibilidad_audio"):
+        return _clamp_float(valor, 0.0, 1.0, DEFAULTS[clave])
+    if clave == "ambilight_reactivo_audio":
+        return bool(valor)
+    if clave == "ambilight_monitor":
+        return _clamp_int(valor, 0, 16, DEFAULTS[clave])
     if clave == "sync_modo":
         return valor if valor in ("portada", "humor") else DEFAULTS[clave]
     return valor
@@ -154,6 +179,14 @@ class Ajustes:
             if self.autosave:
                 self._persistir()
             return self._datos[clave]
+
+    def resetear(self) -> dict[str, Any]:
+        """Restablece todos los ajustes a los valores por defecto."""
+        with self._lock:
+            self._datos = dict(DEFAULTS)
+            if self.autosave:
+                self._persistir()
+            return dict(self._datos)
 
     def actualizar(self, cambios: dict[str, Any]) -> dict[str, Any]:
         """Aplica varios ajustes de una vez. Devuelve el diccionario completo resultante."""

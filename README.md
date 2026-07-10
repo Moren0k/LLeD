@@ -48,6 +48,30 @@ Sistema profesional de **detección de ritmo en tiempo real** y sincronización 
   URL (`http://<ip-lan>:8770`) para abrir en cualquier celular/PC/TV de la
   misma red. Difunde color/beats por WebSocket (puerto 8771).
 
+### 🎬 Cine Mode (Ambilight + audio, NUEVO)
+- Captura la pantalla de ESTA PC (con `mss`) y pinta la tira con un **color ambiente**
+  que sigue la escena: promedio + bordes + color dominante, con **intensidad dinámica**
+  (escena oscura → tenue; cielo/sol → intensa). Un solo color (la tira es monocromática).
+- **Reactivo al audio** (reusa el motor de ritmo): la energía sube la intensidad y los
+  golpes fuertes disparan destellos teñidos con el color de la escena (explosiones, pasos,
+  screamers).
+- Es **heurístico** (color + sonido), no reconocimiento de escena.
+- **Netflix/DRM:** YouTube funciona directo; para Netflix hay que **desactivar la
+  aceleración por hardware** del navegador (no se hace bypass de DRM). Si la captura sale
+  negra, Cine Mode **degrada a solo-audio** automáticamente.
+- Solo local. Ajustes: fps, suavidad, saturación, intensidad, pesos, monitor.
+
+### ⚡ Rendimiento (optimizado)
+- Las máscaras/ventanas de FFT del motor de audio se **precomputan y cachean** (antes se
+  recalculaban ~94 veces/seg).
+- Cine Mode aplica el color con envío único por frame (sin transiciones intermedias, ya que
+  la captura suaviza con EMA) y corre a **15 fps** por defecto con submuestreo alto.
+- Ajustable: bajá los FPS de Cine si tu PC va justa (pestaña Cine → Ajuste fino).
+
+### ♻️ Reiniciar (NUEVO)
+- **Ajustes → Reinicio**: "Restablecer ajustes" (vuelve todo a fábrica) y "Borrar historial de
+  colores" (vacía la biblioteca por canción). No afecta el dispositivo ni la sesión de Spotify.
+
 ### 🔌 Cualquier luz Bluetooth (NUEVO)
 - Escaneo y selección del dispositivo BLE desde la app (Ajustes → Dispositivo).
   Ya no hay MAC fija. *Nota:* usa el protocolo ELK-BLEDOM; tiras con otro

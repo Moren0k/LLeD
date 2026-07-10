@@ -1,6 +1,6 @@
 {
   "name": "lled",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "LLeD — Controlador de tiras LED con sincronización musical y visuales",
   "main": "electron/main.js",
   "scripts": {
