@@ -1,4 +1,4 @@
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { useWebSocket } from './useWebSocket.js'
 
 /**
@@ -532,6 +532,55 @@ export function useControlador() {
   on('cache_editado', (d) => { if (d.canciones) biblioteca.value = d.canciones })
   on('cache_eliminado', (d) => { if (d.canciones) biblioteca.value = d.canciones })
   on('cache_limpiado', () => { biblioteca.value = [] })
+
+  // ── Integración con la bandeja del sistema (Electron) ──
+  // El menú de la bandeja refleja el estado y dispara acciones sobre la app.
+  const modoActual = computed(() => {
+    if (ambilightActivado.value) return 'Cine'
+    if (ritmoActivado.value) return 'Ritmo'
+    if (spotifySincronizando.value) return 'Spotify'
+    if (!ledEncendido.value) return 'Apagado'
+    return 'Color manual'
+  })
+
+  if (window.electronAPI && window.electronAPI.actualizarEstado) {
+    const api = window.electronAPI
+    const empujarEstado = () => api.actualizarEstado({
+      ledEncendido: ledEncendido.value,
+      ritmoActivado: ritmoActivado.value,
+      ambilightActivado: ambilightActivado.value,
+      visualActivo: visual.activo,
+      visualUrl: visual.url,
+      modo: modoActual.value,
+    })
+    watch(
+      [ledEncendido, ritmoActivado, ambilightActivado, () => visual.activo, () => visual.url, modoActual],
+      empujarEstado,
+      { immediate: true },
+    )
+
+    // Copia la dirección del visual al activarlo desde la bandeja.
+    let copiarUrlAlActivar = false
+    api.onAccionBandeja((accion) => {
+      if (accion === 'power') togglePower()
+      else if (accion === 'ritmo') toggleRitmo()
+      else if (accion === 'cine') toggleAmbilight()
+      else if (accion === 'fullscreen') abrirVisualFull()
+      else if (accion === 'visual') {
+        if (visual.activo) { detenerVisual() }
+        else { copiarUrlAlActivar = true; iniciarVisual() }
+      } else if (accion.indexOf('timer:') === 0) {
+        const seg = parseInt(accion.slice(6), 10)
+        if (seg > 0) timerIniciar(seg, { ...timer.colorAlerta }, timer.accionAlerta)
+      }
+    })
+    watch(() => visual.url, (url) => {
+      if (copiarUrlAlActivar && visual.activo && url) {
+        api.copiarTexto(url)
+        copiarUrlAlActivar = false
+      }
+    })
+  }
 
   // Se devuelve como `reactive` para que los refs se desenvuelvan solos
   // al inyectarlo en las páginas (se usa como un pequeño store).
