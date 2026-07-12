@@ -30,7 +30,7 @@
     <div class="glass card">
       <div class="fila-titulo">
         <span class="sub">Estilo</span>
-        <AyudaInfo>Elegí cómo se ve el fondo. <b>Aurora</b>: nubes de luz suaves. <b>Orbes</b>: bolitas que se mueven por la pantalla. <b>Ondas</b>: ondas que recorren de lado a lado.</AyudaInfo>
+        <AyudaInfo>Elegí cómo se ve el fondo. <b>Aurora</b>: nubes de luz suaves. <b>Orbes</b>: bolitas que se mueven por la pantalla. <b>Ondas</b>: ondas que recorren de lado a lado. <b>Portada</b>: muestra la carátula del álbum que suena en Spotify.</AyudaInfo>
       </div>
 
       <div v-if="ctrl.timer.activo" class="timer-hint">
@@ -91,6 +91,28 @@
       <input class="input hex" type="text" maxlength="7" :value="hexFondo" @input="onHexFondo" placeholder="#0a0a1e" />
     </div>
 
+    <!-- Carátula (visual Portada) -->
+    <div v-if="mostrarPortadaCard" class="glass card">
+      <div class="fila-titulo">
+        <span class="sub">Carátula</span>
+        <AyudaInfo>Muestra la carátula del álbum que suena en Spotify. Podés difuminar el fondo detrás y ubicar la carátula donde prefieras.</AyudaInfo>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" :checked="ctrl.ajustes.visual_portada_difuminado" @change="ctrl.setAjuste('visual_portada_difuminado', $event.target.checked, true)" />
+        <span class="track"><span class="thumb"></span></span>
+        <span class="toggle-txt">Difuminar el fondo</span>
+      </label>
+      <div class="fila">
+        <span class="field-label">Posición</span>
+        <div class="posiciones">
+          <button v-for="p in posicionesPortada" :key="p.nombre" class="pos-btn" :class="{ activo: portadaPosSel(p) }" :title="p.nombre" @click="ponerPosicionPortada(p.x, p.y)">
+            <span class="pos-dot" :style="dotStyle(p)"></span>
+          </button>
+        </div>
+      </div>
+      <p class="nota" v-if="!ctrl.cancionActual">Se verá cuando esté sonando una canción en Spotify.</p>
+    </div>
+
     <!-- Título de la canción -->
     <div class="glass card">
       <div class="fila-titulo">
@@ -102,6 +124,13 @@
         <input type="checkbox" :checked="ctrl.ajustes.visual_titulo" @change="ctrl.setAjuste('visual_titulo', $event.target.checked, true)" />
         <span class="track"><span class="thumb"></span></span>
         <span class="toggle-txt">Mostrar el título</span>
+      </label>
+
+      <label class="toggle">
+        <input type="checkbox" :checked="ctrl.ajustes.visual_portada" @change="ctrl.setAjuste('visual_portada', $event.target.checked, true)" />
+        <span class="track"><span class="thumb"></span></span>
+        <span class="toggle-txt">Mostrar la carátula en la tarjeta</span>
+        <AyudaInfo>Agrega la carátula del álbum dentro de la tarjeta, junto al nombre y el artista.</AyudaInfo>
       </label>
 
       <template v-if="ctrl.ajustes.visual_titulo">
@@ -203,7 +232,24 @@ const visuales = [
   { id: 'aurora', label: 'Aurora', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 15c3-6 6-6 9 0s6 6 9 0"/><path d="M3 10c3-6 6-6 9 0s6 6 9 0" opacity=".5"/></svg>' },
   { id: 'orbes', label: 'Orbes', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="7" cy="8" r="3"/><circle cx="16" cy="14" r="4"/><circle cx="17" cy="6" r="2"/></svg>' },
   { id: 'ondas', label: 'Ondas', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 8c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/><path d="M2 16c2-3 4-3 6 0s4 3 6 0 4-3 6 0"/></svg>' },
+  { id: 'portada', label: 'Portada', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/></svg>' },
 ]
+
+const mostrarPortadaCard = computed(() => ctrl.ajustes.visual_tipo === 'portada' && !usandoTimer())
+
+const posicionesPortada = [
+  { nombre: 'Arriba', x: 0.5, y: 0.28 },
+  { nombre: 'Centro', x: 0.5, y: 0.42 },
+  { nombre: 'Izquierda', x: 0.3, y: 0.42 },
+  { nombre: 'Derecha', x: 0.7, y: 0.42 },
+]
+function ponerPosicionPortada(x, y) {
+  ctrl.setAjuste('visual_portada_x', x, true)
+  ctrl.setAjuste('visual_portada_y', y, true)
+}
+function portadaPosSel(p) {
+  return Math.abs(ctrl.ajustes.visual_portada_x - p.x) < 0.02 && Math.abs(ctrl.ajustes.visual_portada_y - p.y) < 0.02
+}
 
 const posiciones = [
   { nombre: 'Arriba izq.', x: 0.16, y: 0.14 },
@@ -269,6 +315,7 @@ function copiar(texto) {
 .posiciones { display: flex; gap: 6px; flex-wrap: wrap; }
 .pos-btn { position: relative; width: 38px; height: 26px; border-radius: 7px; cursor: pointer; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--glass-border); padding: 0; transition: border-color 0.15s; }
 .pos-btn:hover { border-color: var(--tint); }
+.pos-btn.activo { border-color: var(--tint); background: rgba(125, 75, 255, 0.14); }
 .pos-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--tint); transform: translate(-50%, -50%); }
 
 .fila-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }

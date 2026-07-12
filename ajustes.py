@@ -43,8 +43,13 @@ DEFAULTS: dict[str, Any] = {
     "visual_titulo_x": 0.5,        # 0 (izq) - 1 (der)
     "visual_titulo_y": 0.85,       # 0 (arriba) - 1 (abajo)
     # Tipo de visual y si los elementos se desplazan por la pantalla.
-    "visual_tipo": "aurora",       # "aurora" | "orbes" | "ondas"
+    "visual_tipo": "aurora",       # "aurora" | "orbes" | "ondas" | "portada"
     "visual_movimiento": True,
+    # Carátula del álbum (Spotify) en los visuales.
+    "visual_portada": False,       # mostrar la carátula dentro de la tarjeta del nombre
+    "visual_portada_difuminado": True,  # visual "portada": fondo difuminado detrás
+    "visual_portada_x": 0.5,       # 0 (izq) - 1 (der): posición de la carátula
+    "visual_portada_y": 0.42,      # 0 (arriba) - 1 (abajo)
     # Cine Mode (ambilight): color ambiente según la pantalla.
     "ambilight_fps": 15,               # 10 - 30
     "ambilight_suavizado": 0.6,        # 0 - 0.95 (EMA, mayor = más suave)
@@ -58,7 +63,7 @@ DEFAULTS: dict[str, Any] = {
     "ambilight_monitor": 0,            # índice de monitor (0 = todos)
 }
 
-VISUALES_VALIDOS = ("aurora", "orbes", "ondas")
+VISUALES_VALIDOS = ("aurora", "orbes", "ondas", "portada")
 
 
 def _clamp_float(valor: Any, minimo: float, maximo: float, defecto: float) -> float:
@@ -103,6 +108,10 @@ def _validar(clave: str, valor: Any) -> Any:
         return valor if valor in VISUALES_VALIDOS else DEFAULTS[clave]
     if clave == "visual_movimiento":
         return bool(valor)
+    if clave in ("visual_portada", "visual_portada_difuminado"):
+        return bool(valor)
+    if clave in ("visual_portada_x", "visual_portada_y"):
+        return _clamp_float(valor, 0.0, 1.0, DEFAULTS[clave])
     if clave == "ambilight_fps":
         return _clamp_int(valor, 10, 30, DEFAULTS[clave])
     if clave == "ambilight_suavizado":
