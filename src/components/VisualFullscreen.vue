@@ -2,9 +2,18 @@
   <div ref="raiz" class="full">
     <VisualCanvas class="full-canvas" />
 
-    <div v-if="ctrl.ajustes.visual_letra && ctrl.letraActual" class="letra">
-      <div class="letra-actual">{{ ctrl.letraActual }}</div>
-      <div class="letra-sig">{{ ctrl.letraSiguiente }}</div>
+    <div
+      v-if="ctrl.ajustes.visual_letra && ctrl.letraActual"
+      class="letra"
+      :style="estiloLetra"
+      @pointerdown="iniciarArrastreLetra"
+    >
+      <transition name="fade-letra" mode="out-in">
+        <div class="letra-actual" :key="ctrl.letraActual">{{ ctrl.letraActual }}</div>
+      </transition>
+      <transition name="fade-letra" mode="out-in">
+        <div class="letra-sig" :key="ctrl.letraSiguiente">{{ ctrl.letraSiguiente }}</div>
+      </transition>
     </div>
 
     <div
@@ -27,7 +36,7 @@
     </div>
 
     <button class="cerrar" title="Salir (Esc)" @click="cerrar">✕</button>
-    <span class="pista">Arrastrá el título para moverlo · Esc para salir</span>
+    <span class="pista">Arrastrá el título o la letra para moverlos · Esc para salir</span>
   </div>
 </template>
 
@@ -56,6 +65,33 @@ const estiloTarjeta = computed(() => ({
   top: `${ctrl.ajustes.visual_titulo_y * 100}%`,
   '--esc': ctrl.ajustes.visual_titulo_escala,
 }))
+
+const estiloLetra = computed(() => ({
+  left: `${ctrl.ajustes.visual_letra_x * 100}%`,
+  top: `${ctrl.ajustes.visual_letra_y * 100}%`,
+  '--esc': ctrl.ajustes.visual_letra_escala,
+}))
+
+// Arrastre genérico que persiste una posición (x, y) en dos ajustes.
+function arrastrar(claveX, claveY) {
+  const mover = (e) => {
+    const x = Math.max(0.04, Math.min(0.96, e.clientX / window.innerWidth))
+    const y = Math.max(0.06, Math.min(0.94, e.clientY / window.innerHeight))
+    ctrl.ajustes[claveX] = x
+    ctrl.ajustes[claveY] = y
+    ctrl.setAjuste(claveX, x)
+    ctrl.setAjuste(claveY, y)
+  }
+  const soltar = () => {
+    window.removeEventListener('pointermove', mover)
+    window.removeEventListener('pointerup', soltar)
+    ctrl.setAjuste(claveX, ctrl.ajustes[claveX], true)
+    ctrl.setAjuste(claveY, ctrl.ajustes[claveY], true)
+  }
+  window.addEventListener('pointermove', mover)
+  window.addEventListener('pointerup', soltar)
+}
+function iniciarArrastreLetra() { arrastrar('visual_letra_x', 'visual_letra_y') }
 
 function iniciarArrastre() {
   const mover = (e) => {
@@ -107,18 +143,25 @@ onUnmounted(() => {
 .full-canvas { position: absolute; inset: 0; }
 
 .letra {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: min(92vw, 900px); text-align: center; pointer-events: none; z-index: 5;
-  transition: opacity 0.3s;
+  position: absolute; transform: translate(-50%, -50%);
+  width: min(92vw, 900px); text-align: center; z-index: 5;
+  cursor: grab; user-select: none;
 }
+.letra:active { cursor: grabbing; }
 .letra-actual {
   color: #fff; font-weight: 800; line-height: 1.2;
-  font-size: clamp(24px, 5.2vw, 52px); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+  font-size: calc(clamp(24px, 5.2vw, 52px) * var(--esc, 1));
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
 }
 .letra-sig {
   color: rgba(255, 255, 255, 0.5); font-weight: 600; margin-top: 10px;
-  font-size: clamp(15px, 3vw, 26px);
+  font-size: calc(clamp(15px, 3vw, 26px) * var(--esc, 1));
 }
+/* Cambio de línea suave (fundido + leve desplazamiento + desenfoque). */
+.fade-letra-enter-active { transition: opacity 0.45s ease, transform 0.45s ease, filter 0.45s ease; }
+.fade-letra-leave-active { transition: opacity 0.25s ease, transform 0.25s ease, filter 0.25s ease; }
+.fade-letra-enter-from { opacity: 0; transform: translateY(12px); filter: blur(5px); }
+.fade-letra-leave-to { opacity: 0; transform: translateY(-10px); filter: blur(5px); }
 
 .tarjeta {
   position: absolute;

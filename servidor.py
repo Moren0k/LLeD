@@ -275,6 +275,13 @@ async def manejar_cliente(websocket):
             "portada_y": ajustes.get("visual_portada_y"),
         }
 
+    def empujar_letra_cfg():
+        visual_hub.set_letra_cfg(
+            ajustes.get("visual_letra_x"),
+            ajustes.get("visual_letra_y"),
+            ajustes.get("visual_letra_escala"),
+        )
+
     tarea_sincronizacion: Optional[asyncio.Task] = None
     sincronizando = False
     sync_modo = ajustes.get("sync_modo")
@@ -663,6 +670,7 @@ async def manejar_cliente(websocket):
                 resultado = ajustes.actualizar(cambios)
                 motor.set_fps(resultado.get("fps_transicion", motor.fps))
                 visual_hub.set_titulo(cfg_titulo())
+                empujar_letra_cfg()
                 # No pisar el reloj/tarjeta del timer en el remoto.
                 if not (temporizador.activo and timer_visual_usar):
                     visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"), cfg_portada())
@@ -674,6 +682,7 @@ async def manejar_cliente(websocket):
                 resultado = ajustes.resetear()
                 motor.set_fps(resultado.get("fps_transicion", motor.fps))
                 visual_hub.set_titulo(cfg_titulo())
+                empujar_letra_cfg()
                 if not (temporizador.activo and timer_visual_usar):
                     visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"), cfg_portada())
                 detector_ritmo.set_sensibilidad_impacto(ajustes.get("ambilight_sensibilidad_audio"))
@@ -794,6 +803,7 @@ async def manejar_cliente(websocket):
                 visual_hub.set_color(estado.r_base, estado.g_base, estado.b_base)
                 visual_hub.set_ritmo(ritmo_activado)
                 visual_hub.set_titulo(cfg_titulo())
+                empujar_letra_cfg()
                 visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"), cfg_portada())
                 if estado.cancion_actual_id:
                     visual_hub.set_cancion(estado.cancion_nombre, estado.cancion_artista, estado.cancion_portada)

@@ -19,7 +19,11 @@
           class="prev-tarjeta"
           :style="{ left: ctrl.ajustes.visual_titulo_x * 100 + '%', top: ctrl.ajustes.visual_titulo_y * 100 + '%' }"
         >{{ ctrl.timer.activo ? 'TIMER' : ctrl.cancionActual }}</div>
-        <div v-if="ctrl.ajustes.visual_letra && ctrl.letraActual" class="prev-letra">{{ ctrl.letraActual }}</div>
+        <div
+          v-if="ctrl.ajustes.visual_letra && ctrl.letraActual"
+          class="prev-letra"
+          :style="{ left: ctrl.ajustes.visual_letra_x * 100 + '%', top: ctrl.ajustes.visual_letra_y * 100 + '%' }"
+        >{{ ctrl.letraActual }}</div>
       </div>
       <button class="btn btn-tint full" @click="ctrl.abrirVisualFull">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
@@ -165,12 +169,26 @@
         <span class="track"><span class="thumb"></span></span>
         <span class="toggle-txt">Mostrar la letra</span>
       </label>
-      <p class="nota" v-if="ctrl.ajustes.visual_letra && ctrl.cancionActual && !ctrl.letraDisponible">
-        Esta canción no tiene letra sincronizada disponible.
-      </p>
-      <p class="nota" v-else-if="ctrl.ajustes.visual_letra">
-        Se ve en pantalla completa y en el visual remoto mientras suena la canción.
-      </p>
+
+      <template v-if="ctrl.ajustes.visual_letra">
+        <div class="fila">
+          <span class="field-label">Tamaño</span>
+          <input class="slider" type="range" min="0.5" max="2.5" step="0.1"
+            :value="ctrl.ajustes.visual_letra_escala"
+            @input="ctrl.setAjuste('visual_letra_escala', Number($event.target.value))" />
+          <span class="valor">{{ Number(ctrl.ajustes.visual_letra_escala).toFixed(1) }}×</span>
+        </div>
+        <div class="fila">
+          <span class="field-label">Posición</span>
+          <div class="posiciones">
+            <button v-for="p in posiciones" :key="p.nombre" class="pos-btn" :class="{ activo: letraPosSel(p) }" :title="p.nombre" @click="ponerPosicionLetra(p.x, p.y)">
+              <span class="pos-dot" :style="dotStyle(p)"></span>
+            </button>
+          </div>
+        </div>
+        <p class="nota" v-if="ctrl.cancionActual && !ctrl.letraDisponible">Esta canción no tiene letra sincronizada disponible.</p>
+        <p class="nota" v-else>Se ve en pantalla completa y en el visual remoto. Arrastrala libre en pantalla completa.</p>
+      </template>
     </div>
 
     <!-- Visual remoto -->
@@ -285,6 +303,13 @@ function ponerPosicion(x, y) {
   ctrl.setAjuste('visual_titulo_x', x, true)
   ctrl.setAjuste('visual_titulo_y', y, true)
 }
+function ponerPosicionLetra(x, y) {
+  ctrl.setAjuste('visual_letra_x', x, true)
+  ctrl.setAjuste('visual_letra_y', y, true)
+}
+function letraPosSel(p) {
+  return Math.abs(ctrl.ajustes.visual_letra_x - p.x) < 0.02 && Math.abs(ctrl.ajustes.visual_letra_y - p.y) < 0.02
+}
 function dotStyle(p) { return { left: p.x * 100 + '%', top: p.y * 100 + '%' } }
 
 function copiar(texto) {
@@ -306,9 +331,10 @@ function copiar(texto) {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
 }
 .prev-letra {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  position: absolute; transform: translate(-50%, -50%);
   max-width: 86%; text-align: center; color: #fff; font-weight: 700; font-size: 0.95rem;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); pointer-events: none; line-height: 1.25;
+  transition: opacity 0.4s ease;
 }
 .full { width: 100%; justify-content: center; }
 

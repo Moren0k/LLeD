@@ -52,6 +52,9 @@ DEFAULTS: dict[str, Any] = {
     "visual_portada_y": 0.42,      # 0 (arriba) - 1 (abajo)
     # Letra sincronizada de la canción (fuente LRCLIB) en los visuales.
     "visual_letra": False,
+    "visual_letra_x": 0.5,          # 0 (izq) - 1 (der)
+    "visual_letra_y": 0.68,         # 0 (arriba) - 1 (abajo); por defecto no tapa la portada
+    "visual_letra_escala": 1.0,     # 0.5 - 2.5
     # Cine Mode (ambilight): color ambiente según la pantalla.
     "ambilight_fps": 15,               # 10 - 30
     "ambilight_suavizado": 0.6,        # 0 - 0.95 (EMA, mayor = más suave)
@@ -112,8 +115,11 @@ def _validar(clave: str, valor: Any) -> Any:
         return bool(valor)
     if clave in ("visual_portada", "visual_portada_difuminado", "visual_letra"):
         return bool(valor)
-    if clave in ("visual_portada_x", "visual_portada_y"):
+    if clave in ("visual_portada_x", "visual_portada_y",
+                 "visual_letra_x", "visual_letra_y"):
         return _clamp_float(valor, 0.0, 1.0, DEFAULTS[clave])
+    if clave == "visual_letra_escala":
+        return _clamp_float(valor, 0.5, 2.5, DEFAULTS[clave])
     if clave == "ambilight_fps":
         return _clamp_int(valor, 10, 30, DEFAULTS[clave])
     if clave == "ambilight_suavizado":

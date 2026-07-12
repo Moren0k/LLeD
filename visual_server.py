@@ -89,6 +89,7 @@ class VisualHub:
             "portada_x": 0.5, "portada_y": 0.42,
             # Letra sincronizada.
             "letra": "", "letra_sig": "",
+            "letra_x": 0.5, "letra_y": 0.68, "letra_escala": 1.0,
             # Estado del timer (para el reloj flip / tarjeta en el remoto).
             "timer_on": False, "timer_progreso": 0.0, "timer_restante": 0.0,
             "timer_fondo_r": 10, "timer_fondo_g": 10, "timer_fondo_b": 30,
@@ -238,6 +239,12 @@ class VisualHub:
         self.estado["letra_sig"] = siguiente or ""
         self._emitir({"t": "letra", "actual": actual or "", "siguiente": siguiente or ""})
 
+    def set_letra_cfg(self, x: float, y: float, escala: float) -> None:
+        self.estado["letra_x"] = float(x)
+        self.estado["letra_y"] = float(y)
+        self.estado["letra_escala"] = float(escala)
+        self._emitir({"t": "letra_cfg", "x": float(x), "y": float(y), "escala": float(escala)})
+
     def set_timer_fondo(self, r: int, g: int, b: int) -> None:
         self.estado["timer_fondo_r"] = int(r)
         self.estado["timer_fondo_g"] = int(g)
@@ -281,14 +288,17 @@ _HTML = """<!doctype html>
     box-shadow:0 8px 24px rgba(0,0,0,.45)}
   .t-portada.ver{display:block}
   .tarjeta.oculto{opacity:0}
-  .letra{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;
+  .letra{position:fixed;left:50%;top:68%;transform:translate(-50%,-50%);text-align:center;
     width:min(92vw,900px);pointer-events:none;transition:opacity .3s;
     font-family:-apple-system,Segoe UI,sans-serif}
+  .letra-actual,.letra-sig{transition:opacity .45s ease,transform .45s ease,filter .45s ease}
   .letra-actual{color:#fff;font-weight:800;line-height:1.2;
-    font-size:clamp(24px,5.5vw,52px);text-shadow:0 2px 18px rgba(0,0,0,.6)}
+    font-size:calc(clamp(24px,5.2vw,52px) * var(--esc,1));text-shadow:0 2px 18px rgba(0,0,0,.6)}
   .letra-sig{color:rgba(255,255,255,.5);font-weight:600;margin-top:10px;
-    font-size:clamp(15px,3vw,26px)}
+    font-size:calc(clamp(15px,3vw,26px) * var(--esc,1))}
   .letra.oculto{opacity:0}
+  .letra-actual.saliendo,.letra-sig.saliendo{opacity:0;transform:translateY(-10px);filter:blur(5px)}
+  .letra-actual.entrando,.letra-sig.entrando{opacity:0;transform:translateY(12px);filter:blur(5px)}
 </style>
 </head>
 <body>
@@ -354,10 +364,34 @@ _HTML = """<!doctype html>
     tarjeta.style.top=((y!=null?y:0.85)*100)+'%';
     refrescarTarjeta();
   }
+  var letraAnimando=false, letraPendiente=null;
+  function aplicarLetraCfg(x,y,escala){
+    letra.style.left=((x!=null?x:0.5)*100)+'%';
+    letra.style.top=((y!=null?y:0.68)*100)+'%';
+    letra.style.setProperty('--esc',escala||1);
+  }
   function aplicarLetra(actual,siguiente){
-    letraActual.textContent=actual||'';
-    letraSig.textContent=siguiente||'';
-    letra.classList.toggle('oculto',!(actual&&actual.length));
+    letraPendiente={actual:actual||'',siguiente:siguiente||''};
+    if(!letraAnimando) reproducirCambioLetra();
+  }
+  function reproducirCambioLetra(){
+    if(!letraPendiente){letraAnimando=false;return;}
+    var sig=letraPendiente; letraPendiente=null; letraAnimando=true;
+    var hayActual=letraActual.textContent.length>0;
+    var aplicar=function(){
+      letraActual.textContent=sig.actual;
+      letraSig.textContent=sig.siguiente;
+      letra.classList.toggle('oculto',!(sig.actual&&sig.actual.length));
+      letraActual.classList.remove('saliendo'); letraSig.classList.remove('saliendo');
+      letraActual.classList.add('entrando'); letraSig.classList.add('entrando');
+      void letraActual.offsetWidth; // fuerza reflow para animar la entrada
+      letraActual.classList.remove('entrando'); letraSig.classList.remove('entrando');
+      setTimeout(function(){letraAnimando=false;reproducirCambioLetra();},320);
+    };
+    if(hayActual){
+      letraActual.classList.add('saliendo'); letraSig.classList.add('saliendo');
+      setTimeout(aplicar,240);
+    } else { aplicar(); }
   }
   function marcaEstado(txt){
     estado.textContent=txt; estado.classList.remove('oculto');
@@ -381,6 +415,7 @@ _HTML = """<!doctype html>
       else if(d.t==='timer_tick'){timerRestante=d.restante;vis.setTimerProgreso(d.p,d.restante);if(timerOn)refrescarTarjeta()}
       else if(d.t==='timer_fondo'){vis.setTimerFondoColor(d.r,d.g,d.b)}
       else if(d.t==='letra'){aplicarLetra(d.actual,d.siguiente)}
+      else if(d.t==='letra_cfg'){aplicarLetraCfg(d.x,d.y,d.escala)}
       else if(d.t==='estado'){
         vis.setColor(d.r,d.g,d.b);vis.setRitmo(d.ritmo);
         vis.setTipo(d.tipo);vis.setMovimiento(d.movimiento);
@@ -390,6 +425,7 @@ _HTML = """<!doctype html>
         timerRestante=d.timer_restante; timerOn=!!d.timer_on;
         aplicarTitulo(d.titulo,d.titulo_escala,d.titulo_x,d.titulo_y,d.portada_tarjeta);
         aplicarCancion(d.cancion,d.artista,d.portada);
+        aplicarLetraCfg(d.letra_x,d.letra_y,d.letra_escala);
         aplicarLetra(d.letra,d.letra_sig);
       }
     };
