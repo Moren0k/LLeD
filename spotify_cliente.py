@@ -15,7 +15,9 @@ Flujo:
 import asyncio
 import json
 import os
+import webbrowser
 from typing import Optional
+from urllib.parse import urlparse, parse_qs
 
 import spotipy
 from spotipy.oauth2 import SpotifyPKCE
@@ -25,6 +27,13 @@ from rutas import ruta_datos
 
 ALCANCES = "user-read-playback-state user-read-currently-playing"
 REDIRECT_POR_DEFECTO = "http://127.0.0.1:8888/callback"
+PUERTO_CALLBACK = 8888
+_PAGINA_OK = (
+    "<!doctype html><html lang='es'><head><meta charset='utf-8'><title>LLeD</title></head>"
+    "<body style='font-family:system-ui,sans-serif;background:#0b0b12;color:#eef;"
+    "text-align:center;padding-top:22vh'><h2>Cuenta conectada</h2>"
+    "<p>Ya podés volver a la aplicación LLeD.</p></body></html>"
+)
 
 # client_id horneado (es público, no es un secreto). Se usa si no hay config.
 CLIENTE_ID_POR_DEFECTO = "79c19a6f6db34dad9d69bfcb036233eb"
@@ -63,14 +72,18 @@ class ClienteSpotify:
         self._token_info = None
 
     def _crear_oauth(self) -> SpotifyPKCE:
-        """Crea (o reusa) el objeto de autenticación PKCE."""
+        """Crea (o reusa) el objeto de autenticación PKCE.
+
+        ``open_browser=False``: el navegador y la captura del callback los maneja
+        esta clase (servidor asíncrono propio), no el flujo bloqueante de spotipy.
+        """
         if self._oauth is None:
             self._oauth = SpotifyPKCE(
                 client_id=self._cliente_id,
                 redirect_uri=self._redirect_uri,
                 scope=ALCANCES,
                 cache_path=self._cache_path,
-                open_browser=True,
+                open_browser=False,
             )
         return self._oauth
 
@@ -82,14 +95,80 @@ class ClienteSpotify:
         """Genera la URL que debe abrir el usuario en el navegador."""
         return self._crear_oauth().get_authorize_url()
 
+    async def _esperar_codigo(self, timeout: float = 120.0) -> Optional[str]:
+        """Levanta un servidor local que captura el ``code`` del callback OAuth.
+
+        Corre sobre el event loop (cancelable, con timeout) y libera el puerto al
+        terminar, evitando los cuelgues del servidor bloqueante de spotipy.
+        """
+        loop = asyncio.get_event_loop()
+        futuro: asyncio.Future = loop.create_future()
+
+        async def manejar(reader, writer):
+            code = None
+            try:
+                datos = await asyncio.wait_for(reader.read(4096), timeout=5)
+                primera = datos.decode("latin-1", "ignore").split("\r\n", 1)[0]
+                partes = primera.split(" ")
+                ruta = partes[1] if len(partes) > 1 else ""
+                consulta = parse_qs(urlparse(ruta).query)
+                code = (consulta.get("code") or [None])[0]
+            except Exception:
+                code = None
+            try:
+                cuerpo = _PAGINA_OK.encode("utf-8")
+                writer.write(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
+                    b"Content-Length: " + str(len(cuerpo)).encode() + b"\r\n"
+                    b"Connection: close\r\n\r\n" + cuerpo
+                )
+                await writer.drain()
+                writer.close()
+            except Exception:
+                pass
+            if not futuro.done():
+                futuro.set_result(code)
+
+        try:
+            servidor = await asyncio.start_server(manejar, "127.0.0.1", PUERTO_CALLBACK)
+        except OSError:
+            return None  # puerto ocupado u otro problema al abrir el servidor
+        try:
+            return await asyncio.wait_for(futuro, timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
+        finally:
+            servidor.close()
+            try:
+                await servidor.wait_closed()
+            except Exception:
+                pass
+
     async def autenticar(self, url_callback=None) -> bool:
-        """Inicia el flujo PKCE en un hilo separado (abre navegador)."""
+        """Flujo PKCE controlado: abre el navegador y captura el callback local.
+
+        No usa el servidor bloqueante de spotipy (que dejaba el puerto tomado y no
+        se podía cancelar). Devuelve True si la sesión quedó autenticada.
+        """
         if not self.tiene_credenciales():
             return False
 
-        def _bloqueante():
-            token = self._crear_oauth().get_access_token()
-            # SpotifyPKCE.get_access_token puede devolver el string del token.
+        oauth = self._crear_oauth()
+        try:
+            url = oauth.get_authorize_url()
+        except Exception:
+            return False
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass  # si no se abre, el usuario tiene el enlace de respaldo en la app
+
+        code = await self._esperar_codigo(timeout=120.0)
+        if not code:
+            return False
+
+        def _canjear():
+            token = oauth.get_access_token(code, check_cache=False)
             access = token["access_token"] if isinstance(token, dict) else token
             if access:
                 self._token_info = token
@@ -98,7 +177,7 @@ class ClienteSpotify:
             return self._autenticado
 
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _bloqueante)
+        return await loop.run_in_executor(None, _canjear)
 
     def autenticar_desde_cache(self) -> bool:
         """Restaura la sesión desde la caché en disco SIN abrir el navegador."""
