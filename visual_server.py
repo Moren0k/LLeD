@@ -88,7 +88,7 @@ class VisualHub:
             "portada_tarjeta": False, "portada_difuminado": True,
             "portada_x": 0.5, "portada_y": 0.42,
             # Letra sincronizada.
-            "letra": "", "letra_sig": "",
+            "letra": "", "letra_sig": "", "letra_ant": "", "letra_idx": -1,
             "letra_x": 0.5, "letra_y": 0.68, "letra_escala": 1.0,
             # Estado del timer (para el reloj flip / tarjeta en el remoto).
             "timer_on": False, "timer_progreso": 0.0, "timer_restante": 0.0,
@@ -234,10 +234,15 @@ class VisualHub:
             "restante": round(float(restante), 2),
         })
 
-    def set_letra(self, actual: str, siguiente: str = "") -> None:
+    def set_letra(self, actual: str = "", siguiente: str = "", anterior: str = "", indice: int = -1) -> None:
         self.estado["letra"] = actual or ""
         self.estado["letra_sig"] = siguiente or ""
-        self._emitir({"t": "letra", "actual": actual or "", "siguiente": siguiente or ""})
+        self.estado["letra_ant"] = anterior or ""
+        self.estado["letra_idx"] = int(indice)
+        self._emitir({
+            "t": "letra", "actual": actual or "", "siguiente": siguiente or "",
+            "anterior": anterior or "", "indice": int(indice),
+        })
 
     def set_letra_cfg(self, x: float, y: float, escala: float) -> None:
         self.estado["letra_x"] = float(x)
@@ -288,25 +293,22 @@ _HTML = """<!doctype html>
     box-shadow:0 8px 24px rgba(0,0,0,.45)}
   .t-portada.ver{display:block}
   .tarjeta.oculto{opacity:0}
-  .letra{position:fixed;left:50%;top:68%;transform:translate(-50%,-50%);text-align:center;
-    width:min(92vw,900px);pointer-events:none;transition:opacity .3s;
-    font-family:-apple-system,Segoe UI,sans-serif}
-  .letra-actual,.letra-sig{transition:opacity .45s ease,transform .45s ease,filter .45s ease}
-  .letra-actual{color:#fff;font-weight:800;line-height:1.2;
-    font-size:calc(clamp(24px,5.2vw,52px) * var(--esc,1));text-shadow:0 2px 18px rgba(0,0,0,.6)}
-  .letra-sig{color:rgba(255,255,255,.5);font-weight:600;margin-top:10px;
-    font-size:calc(clamp(15px,3vw,26px) * var(--esc,1))}
+  .letra{position:fixed;left:50%;top:68%;width:0;height:0;pointer-events:none;
+    font-family:-apple-system,Segoe UI,sans-serif;transition:opacity .3s}
   .letra.oculto{opacity:0}
-  .letra-actual.saliendo,.letra-sig.saliendo{opacity:0;transform:translateY(-10px);filter:blur(5px)}
-  .letra-actual.entrando,.letra-sig.entrando{opacity:0;transform:translateY(12px);filter:blur(5px)}
+  .letra-linea{position:absolute;left:0;top:0;width:min(92vw,900px);text-align:center;line-height:1.25;
+    transform:translate(-50%,-50%);
+    transition:transform .55s cubic-bezier(.22,.61,.36,1),opacity .5s ease,font-size .5s ease;
+    will-change:transform,opacity}
+  .letra-linea.act{color:#fff;font-weight:800;
+    font-size:calc(clamp(24px,5.2vw,52px)*var(--esc,1));text-shadow:0 2px 18px rgba(0,0,0,.6)}
+  .letra-linea:not(.act){color:rgba(255,255,255,.42);font-weight:600;
+    font-size:calc(clamp(16px,3.4vw,30px)*var(--esc,1))}
 </style>
 </head>
 <body>
   <canvas id="cv"></canvas>
-  <div class="letra oculto" id="letra">
-    <div class="letra-actual" id="letraActual"></div>
-    <div class="letra-sig" id="letraSig"></div>
-  </div>
+  <div class="letra oculto" id="letra"></div>
   <div class="tarjeta oculto" id="tarjeta">
     <img class="t-portada" id="tportada" alt="">
     <div class="t-nombre" id="tnombre"></div>
@@ -318,8 +320,6 @@ _HTML = """<!doctype html>
 (function(){
   var estado=document.getElementById('estado');
   var letra=document.getElementById('letra');
-  var letraActual=document.getElementById('letraActual');
-  var letraSig=document.getElementById('letraSig');
   var tarjeta=document.getElementById('tarjeta');
   var tnombre=document.getElementById('tnombre');
   var tartista=document.getElementById('tartista');
@@ -364,34 +364,59 @@ _HTML = """<!doctype html>
     tarjeta.style.top=((y!=null?y:0.85)*100)+'%';
     refrescarTarjeta();
   }
-  var letraAnimando=false, letraPendiente=null;
+  // Carrusel de letra: 3 líneas (pasada arriba, actual al medio, próxima abajo)
+  // que se desplazan hacia arriba en cada cambio, con desvanecido.
+  var letraSlots={}, letraIdx=-1, letraEsc=1;
+  function letraPos(off){ return 'translate(-50%, calc(-50% + '+(off*64*letraEsc)+'px))'; }
   function aplicarLetraCfg(x,y,escala){
     letra.style.left=((x!=null?x:0.5)*100)+'%';
     letra.style.top=((y!=null?y:0.68)*100)+'%';
-    letra.style.setProperty('--esc',escala||1);
+    letraEsc=escala||1;
+    letra.style.setProperty('--esc',letraEsc);
+    posicionarLetras();
   }
-  function aplicarLetra(actual,siguiente){
-    letraPendiente={actual:actual||'',siguiente:siguiente||''};
-    if(!letraAnimando) reproducirCambioLetra();
+  function aplicarLetra(idx,ant,act,sig){
+    idx=(idx==null?-1:idx);
+    var deseadas={};
+    if(idx>=0 && act){
+      if(ant) deseadas[idx-1]=ant;
+      deseadas[idx]=act;
+      if(sig) deseadas[idx+1]=sig;
+    }
+    Object.keys(deseadas).forEach(function(k){
+      if(!letraSlots[k]){
+        var el=document.createElement('div');
+        el.className='letra-linea';
+        el.textContent=deseadas[k];
+        el.style.opacity='0';
+        el.style.transform=letraPos((parseInt(k)-idx)+0.7); // entra desde abajo
+        letra.appendChild(el);
+        letraSlots[k]=el;
+      } else {
+        letraSlots[k].textContent=deseadas[k];
+      }
+    });
+    letraIdx=idx;
+    void letra.offsetWidth; // fuerza reflow para animar a los recién creados
+    posicionarLetras();
+    letra.classList.toggle('oculto', !(idx>=0 && act));
   }
-  function reproducirCambioLetra(){
-    if(!letraPendiente){letraAnimando=false;return;}
-    var sig=letraPendiente; letraPendiente=null; letraAnimando=true;
-    var hayActual=letraActual.textContent.length>0;
-    var aplicar=function(){
-      letraActual.textContent=sig.actual;
-      letraSig.textContent=sig.siguiente;
-      letra.classList.toggle('oculto',!(sig.actual&&sig.actual.length));
-      letraActual.classList.remove('saliendo'); letraSig.classList.remove('saliendo');
-      letraActual.classList.add('entrando'); letraSig.classList.add('entrando');
-      void letraActual.offsetWidth; // fuerza reflow para animar la entrada
-      letraActual.classList.remove('entrando'); letraSig.classList.remove('entrando');
-      setTimeout(function(){letraAnimando=false;reproducirCambioLetra();},320);
-    };
-    if(hayActual){
-      letraActual.classList.add('saliendo'); letraSig.classList.add('saliendo');
-      setTimeout(aplicar,240);
-    } else { aplicar(); }
+  function posicionarLetras(){
+    Object.keys(letraSlots).forEach(function(k){
+      var i=parseInt(k), el=letraSlots[k], off=i-letraIdx;
+      if(letraIdx<0 || Math.abs(off)>1){
+        el.style.opacity='0';
+        el.style.transform=letraPos(off);
+        setTimeout(function(){
+          var o=i-letraIdx;
+          if(letraSlots[k]===el && (letraIdx<0 || Math.abs(o)>1)){ el.remove(); delete letraSlots[k]; }
+        },600);
+      } else {
+        el.classList.toggle('act', off===0);
+        el.style.opacity = off===0 ? '1' : '.42';
+        el.style.transform=letraPos(off);
+      }
+    });
   }
   function marcaEstado(txt){
     estado.textContent=txt; estado.classList.remove('oculto');
@@ -414,7 +439,7 @@ _HTML = """<!doctype html>
       else if(d.t==='timer_estado'){timerOn=!!d.on;refrescarTarjeta()}
       else if(d.t==='timer_tick'){timerRestante=d.restante;vis.setTimerProgreso(d.p,d.restante);if(timerOn)refrescarTarjeta()}
       else if(d.t==='timer_fondo'){vis.setTimerFondoColor(d.r,d.g,d.b)}
-      else if(d.t==='letra'){aplicarLetra(d.actual,d.siguiente)}
+      else if(d.t==='letra'){aplicarLetra(d.indice,d.anterior,d.actual,d.siguiente)}
       else if(d.t==='letra_cfg'){aplicarLetraCfg(d.x,d.y,d.escala)}
       else if(d.t==='estado'){
         vis.setColor(d.r,d.g,d.b);vis.setRitmo(d.ritmo);
@@ -426,7 +451,7 @@ _HTML = """<!doctype html>
         aplicarTitulo(d.titulo,d.titulo_escala,d.titulo_x,d.titulo_y,d.portada_tarjeta);
         aplicarCancion(d.cancion,d.artista,d.portada);
         aplicarLetraCfg(d.letra_x,d.letra_y,d.letra_escala);
-        aplicarLetra(d.letra,d.letra_sig);
+        aplicarLetra(d.letra_idx,d.letra_ant,d.letra,d.letra_sig);
       }
     };
   }

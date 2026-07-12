@@ -3,17 +3,14 @@
     <VisualCanvas class="full-canvas" />
 
     <div
-      v-if="ctrl.ajustes.visual_letra && ctrl.letraActual"
+      v-if="ctrl.ajustes.visual_letra && lineasLetra.length"
       class="letra"
       :style="estiloLetra"
       @pointerdown="iniciarArrastreLetra"
     >
-      <transition name="fade-letra" mode="out-in">
-        <div class="letra-actual" :key="ctrl.letraActual">{{ ctrl.letraActual }}</div>
-      </transition>
-      <transition name="fade-letra" mode="out-in">
-        <div class="letra-sig" :key="ctrl.letraSiguiente">{{ ctrl.letraSiguiente }}</div>
-      </transition>
+      <TransitionGroup name="carrusel" tag="div" class="letra-stack">
+        <div v-for="l in lineasLetra" :key="l.key" class="letra-linea" :class="l.rol">{{ l.texto }}</div>
+      </TransitionGroup>
     </div>
 
     <div
@@ -71,6 +68,19 @@ const estiloLetra = computed(() => ({
   top: `${ctrl.ajustes.visual_letra_y * 100}%`,
   '--esc': ctrl.ajustes.visual_letra_escala,
 }))
+
+// Ventana de 3 líneas: anterior (arriba), actual (medio), siguiente (abajo).
+// La clave es el índice de la línea en la canción para que TransitionGroup
+// anime el desplazamiento (carrusel) al avanzar.
+const lineasLetra = computed(() => {
+  const i = ctrl.letraIndice
+  if (i < 0 || !ctrl.letraActual) return []
+  const arr = []
+  if (ctrl.letraAnterior) arr.push({ key: i - 1, rol: 'ant', texto: ctrl.letraAnterior })
+  arr.push({ key: i, rol: 'act', texto: ctrl.letraActual })
+  if (ctrl.letraSiguiente) arr.push({ key: i + 1, rol: 'sig', texto: ctrl.letraSiguiente })
+  return arr
+})
 
 // Arrastre genérico que persiste una posición (x, y) en dos ajustes.
 function arrastrar(claveX, claveY) {
@@ -148,20 +158,29 @@ onUnmounted(() => {
   cursor: grab; user-select: none;
 }
 .letra:active { cursor: grabbing; }
-.letra-actual {
-  color: #fff; font-weight: 800; line-height: 1.2;
+.letra-stack {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.letra-linea {
+  text-align: center; line-height: 1.25; max-width: 100%;
+  transition: opacity 0.5s ease, color 0.5s ease, font-size 0.5s ease;
+}
+.letra-linea.act {
+  color: #fff; font-weight: 800; opacity: 1;
   font-size: calc(clamp(24px, 5.2vw, 52px) * var(--esc, 1));
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
 }
-.letra-sig {
-  color: rgba(255, 255, 255, 0.5); font-weight: 600; margin-top: 10px;
-  font-size: calc(clamp(15px, 3vw, 26px) * var(--esc, 1));
+.letra-linea.ant, .letra-linea.sig {
+  color: rgba(255, 255, 255, 0.5); font-weight: 600; opacity: 0.55;
+  font-size: calc(clamp(16px, 3.4vw, 30px) * var(--esc, 1));
 }
-/* Cambio de línea suave (fundido + leve desplazamiento + desenfoque). */
-.fade-letra-enter-active { transition: opacity 0.45s ease, transform 0.45s ease, filter 0.45s ease; }
-.fade-letra-leave-active { transition: opacity 0.25s ease, transform 0.25s ease, filter 0.25s ease; }
-.fade-letra-enter-from { opacity: 0; transform: translateY(12px); filter: blur(5px); }
-.fade-letra-leave-to { opacity: 0; transform: translateY(-10px); filter: blur(5px); }
+/* Carrusel: las líneas se desplazan (FLIP) y entran/salen con fundido. */
+.carrusel-move { transition: transform 0.5s cubic-bezier(0.22, 0.61, 0.36, 1); }
+.carrusel-enter-active { transition: opacity 0.5s ease, transform 0.5s ease; }
+.carrusel-leave-active { transition: opacity 0.45s ease, transform 0.45s ease; position: absolute; left: 0; right: 0; }
+.carrusel-enter-from { opacity: 0; transform: translateY(28px); }
+.carrusel-leave-to { opacity: 0; transform: translateY(-28px); }
 
 .tarjeta {
   position: absolute;

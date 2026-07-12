@@ -1075,6 +1075,13 @@ async def _bucle_letra(websocket, spotify):
                     if cancion["cancion_id"] != cancion_id:
                         cancion_id = cancion["cancion_id"]
                         ultimo_idx = -2
+                        # Limpia la letra anterior de inmediato (evita que quede
+                        # la última línea si la canción nueva no tiene letra).
+                        await _enviar_json(websocket, {
+                            "ok": True, "evento": "letra",
+                            "indice": -1, "anterior": "", "actual": "", "siguiente": "",
+                        })
+                        visual_hub.set_letra("", "", "", -1)
                         lineas = await loop.run_in_executor(
                             None, obtener_letra_sincronizada,
                             cancion.get("artista", ""), cancion.get("nombre", ""),
@@ -1083,30 +1090,34 @@ async def _bucle_letra(websocket, spotify):
                         await _enviar_json(websocket, {
                             "ok": True, "evento": "letra_estado", "tiene": bool(lineas)
                         })
-                        visual_hub.set_letra("", "")
                     prog_base = cancion.get("progress_ms", 0) / 1000.0
                     wall_base = ahora
                     reproduciendo = cancion.get("reproduciendo", True)
                 elif cancion_id is not None:
                     cancion_id, lineas, ultimo_idx = None, None, -2
                     await _enviar_json(websocket, {"ok": True, "evento": "letra_estado", "tiene": False})
-                    await _enviar_json(websocket, {"ok": True, "evento": "letra", "actual": "", "siguiente": ""})
-                    visual_hub.set_letra("", "")
+                    await _enviar_json(websocket, {
+                        "ok": True, "evento": "letra",
+                        "indice": -1, "anterior": "", "actual": "", "siguiente": "",
+                    })
+                    visual_hub.set_letra("", "", "", -1)
 
             t = prog_base + ((time.time() - wall_base) if reproduciendo else 0.0)
             if lineas:
                 idx = indice_linea_actual(lineas, t)
                 if idx != ultimo_idx:
                     ultimo_idx = idx
+                    anterior = lineas[idx - 1][1] if idx - 1 >= 0 else ""
                     actual = lineas[idx][1] if idx >= 0 else ""
                     siguiente = lineas[idx + 1][1] if 0 <= idx + 1 < len(lineas) else ""
                     await _enviar_json(websocket, {
-                        "ok": True, "evento": "letra", "actual": actual, "siguiente": siguiente
+                        "ok": True, "evento": "letra", "indice": idx,
+                        "anterior": anterior, "actual": actual, "siguiente": siguiente,
                     })
-                    visual_hub.set_letra(actual, siguiente)
+                    visual_hub.set_letra(actual, siguiente, anterior, idx)
             await asyncio.sleep(0.2)
     except asyncio.CancelledError:
-        visual_hub.set_letra("", "")
+        visual_hub.set_letra("", "", "", -1)
 
 
 async def _bucle_ritmo(websocket, estado: EstadoLED, detector):
