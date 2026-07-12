@@ -201,6 +201,7 @@ class _TiraNula:
     async def apagar(self): pass
     async def color(self, r, g, b): pass
     async def brillo(self, valor): pass
+    async def temperatura(self, calido=50, frio=50): pass
     async def probar_colores(self): pass
     async def arcoiris(self, *a, **k): pass
 
@@ -310,7 +311,7 @@ async def manejar_cliente(websocket):
     ambilight_uso_audio = False
     tarea_ambilight: Optional[asyncio.Task] = None
 
-    COMANDOS_LED = {"encender", "apagar", "color", "brillo", "probar", "arcoiris"}
+    COMANDOS_LED = {"encender", "apagar", "color", "brillo", "probar", "arcoiris", "temperatura"}
 
     try:
         if direccion:
@@ -368,6 +369,14 @@ async def manejar_cliente(websocket):
                 await tira.brillo(valor)
                 await websocket.send(json.dumps({
                     "ok": True, "evento": "brillo", "valor": valor
+                }))
+
+            elif comando == "temperatura":
+                # Blanco cálido/frío. Se recibe la "calidez" 0-100 y se reparte.
+                calidez = max(0, min(100, int(datos.get("calidez", 50))))
+                await tira.temperatura(calidez, 100 - calidez)
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "temperatura", "calidez": calidez
                 }))
 
             elif comando == "probar":

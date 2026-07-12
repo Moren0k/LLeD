@@ -12,6 +12,17 @@ UUID_CARACTERISTICA = "0000fff3-0000-1000-8000-00805f9b34fb"
 INICIO = 0x7E
 FINAL = 0xEF
 
+# Corrección de gamma para la salida de color del LED. El ojo percibe la luz de
+# forma no lineal; sin corrección los fundidos "saltan" en la zona oscura y los
+# tonos medios se ven más claros de lo esperado. Se aplica solo al color enviado
+# a la tira (la interfaz sigue mostrando el color sRGB pedido). Ajustable.
+GAMMA = 2.2
+_GAMMA_LUT = tuple(round(((i / 255.0) ** GAMMA) * 255) for i in range(256))
+
+
+def _gamma(v: int) -> int:
+    return _GAMMA_LUT[max(0, min(255, int(v)))]
+
 
 def _comando_color(rojo: int, verde: int, azul: int, byte2: int = 0x00, relleno: int = 0x00) -> bytes:
     """Construye el payload de 9 bytes para cambiar el color RGB.
@@ -150,8 +161,12 @@ class TiraLED:
         print("LED apagado")
 
     async def color(self, rojo: int, verde: int, azul: int) -> None:
-        """Cambia el color de la tira a un RGB específico (0-255 cada canal)."""
-        await self.enviar(_comando_color(rojo, verde, azul))
+        """Cambia el color de la tira a un RGB específico (0-255 cada canal).
+
+        Aplica corrección de gamma para que los fundidos y los tonos se vean
+        perceptualmente correctos en la tira.
+        """
+        await self.enviar(_comando_color(_gamma(rojo), _gamma(verde), _gamma(azul)))
         print(f"Color: RGB({rojo}, {verde}, {azul})")
 
     async def brillo(self, valor: int) -> None:
