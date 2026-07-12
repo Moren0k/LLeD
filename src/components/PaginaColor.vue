@@ -49,6 +49,26 @@
 
     <div class="glass card">
       <div class="fila-titulo">
+        <span class="sub">Efectos de ambiente</span>
+        <AyudaInfo>Efectos suaves para cuando no hay música: <b>Respiración</b> y <b>Pulso</b> laten con el color actual; <b>Vela</b> y <b>Fuego</b> titilan cálidos; <b>Ciclo</b> recorre los colores. Tocá uno para activarlo y de nuevo para apagarlo.</AyudaInfo>
+      </div>
+      <div class="efectos">
+        <button
+          v-for="e in ctrl.efectosAmbiente"
+          :key="e.id"
+          class="efecto"
+          :class="{ activo: ctrl.ambienteActivado && ctrl.ambienteEfecto === e.id }"
+          @click="ctrl.toggleEfectoAmbiente(e.id)"
+        >
+          <span class="efecto-ico" v-html="e.ico"></span>
+          <span class="efecto-lbl">{{ e.label }}</span>
+        </button>
+      </div>
+      <button v-if="ctrl.ambienteActivado" class="btn btn-tint peligro full" @click="ctrl.detenerAmbiente">Detener efecto</button>
+    </div>
+
+    <div class="glass card">
+      <div class="fila-titulo">
         <span class="sub">Blanco cálido / frío</span>
         <AyudaInfo>Luz blanca ajustable, de cálida (amarillenta) a fría (azulada). Reemplaza el color actual hasta que elijas otro color de la paleta.</AyudaInfo>
       </div>
@@ -104,4 +124,15 @@ const swatches = [
   background: linear-gradient(90deg, #7ab8ff 0%, #ffffff 50%, #ffb457 100%);
 }
 .temp-labels { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--text3); margin-top: -6px; }
+
+.efectos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.efecto {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 14px 6px; border-radius: var(--radius-sm); cursor: pointer; font-family: inherit;
+  background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); color: var(--text2);
+  transition: all 0.15s;
+}
+.efecto:hover { color: var(--text); border-color: var(--glass-border-strong); }
+.efecto.activo { color: #fff; border-color: transparent; background: linear-gradient(135deg, var(--tint), var(--tint-2)); box-shadow: 0 4px 16px -6px var(--tint); }
+.efecto-lbl { font-size: 0.72rem; font-weight: 600; }
 </style>
