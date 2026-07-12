@@ -5,6 +5,8 @@ from typing import Optional
 from bleak import BleakClient, BleakScanner
 from bleak.backends.device import BLEDevice
 
+from registro import log
+
 # --- Constantes del protocolo BLE ---
 UUID_SERVICIO = "0000fff0-0000-1000-8000-00805f9b34fb"
 UUID_CARACTERISTICA = "0000fff3-0000-1000-8000-00805f9b34fb"
@@ -137,7 +139,7 @@ class TiraLED:
             raise ValueError("No hay dirección MAC configurada")
         self._cliente = BleakClient(self.direccion_mac)
         await self._cliente.connect()
-        print(f"Conectado a {self.direccion_mac}")
+        log.info("Conectado al dispositivo LED")
 
     async def desconectar(self) -> None:
         """Cierra la conexión BLE."""
@@ -153,34 +155,32 @@ class TiraLED:
     async def encender(self) -> None:
         """Enciende la tira LED."""
         await self.enviar(_comando_encender(True))
-        print("LED encendido")
+        log.info("LED encendido")
 
     async def apagar(self) -> None:
         """Apaga la tira LED."""
         await self.enviar(_comando_encender(False))
-        print("LED apagado")
+        log.info("LED apagado")
 
     async def color(self, rojo: int, verde: int, azul: int) -> None:
         """Cambia el color de la tira a un RGB específico (0-255 cada canal).
 
         Aplica corrección de gamma para que los fundidos y los tonos se vean
-        perceptualmente correctos en la tira.
+        perceptualmente correctos en la tira. No registra nada: se llama en cada
+        paso de las transiciones/efectos (decenas de veces por segundo).
         """
         await self.enviar(_comando_color(_gamma(rojo), _gamma(verde), _gamma(azul)))
-        print(f"Color: RGB({rojo}, {verde}, {azul})")
 
     async def brillo(self, valor: int) -> None:
         """Ajusta el brillo de 0 a 255."""
         valor = max(0, min(255, valor))
         await self.enviar(_comando_brillo(valor))
-        print(f"Brillo: {valor}")
 
     async def temperatura(self, calido: int = 50, frio: int = 50) -> None:
         """Ajusta temperatura de color. Cálido + Frío deben sumar 100."""
         calido = max(0, min(100, calido))
         frio = max(0, min(100, frio))
         await self.enviar(_comando_temperatura(calido, frio))
-        print(f"Temperatura: cálido={calido}, frío={frio}")
 
     async def arcoiris(self, pasos: int = 12, demora: float = 0.8) -> None:
         """Recorre el espectro HSV mostrando N colores con una pausa entre cada uno."""
@@ -218,6 +218,6 @@ class TiraLED:
         ]
         for etiqueta, b2, relleno in variantes:
             comando = _comando_color(rojo, verde, azul, byte2=b2, relleno=relleno)
-            print(f"  [{etiqueta}] -> {comando.hex()}")
+            log.debug("Variante %s -> %s", etiqueta, comando.hex())
             await self.enviar(comando)
             await asyncio.sleep(2)
