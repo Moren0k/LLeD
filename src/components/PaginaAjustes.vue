@@ -17,7 +17,7 @@
         <div class="estado-disp">
           <span class="dot" :class="{ on: ctrl.dispositivo.conectado }"></span>
           <div class="disp-text">
-            <span class="disp-titulo">Dispositivo LED <AyudaInfo>Tocá Escanear para ver las luces Bluetooth cercanas y elegí la tuya. Funciona con tiras tipo ELK-BLEDOM / Lotus Lantern.</AyudaInfo></span>
+            <span class="disp-titulo">Dispositivo LED <AyudaInfo>Tocá Escanear para ver las luces Bluetooth cercanas y elegí la tuya. Funciona con tiras LED Bluetooth compatibles.</AyudaInfo></span>
             <span class="disp-sub">{{ ctrl.dispositivo.conectado ? ctrl.dispositivo.direccion : 'Sin conectar' }}</span>
           </div>
         </div>

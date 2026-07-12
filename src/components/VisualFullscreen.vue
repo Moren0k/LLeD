@@ -3,13 +3,19 @@
     <VisualCanvas class="full-canvas" />
 
     <div
-      v-if="ctrl.ajustes.visual_titulo && ctrl.cancionActual"
+      v-if="ctrl.ajustes.visual_titulo && (ctrl.cancionActual || ctrl.timer.activo)"
       class="tarjeta"
       :style="estiloTarjeta"
       @pointerdown="iniciarArrastre"
     >
-      <div class="t-nombre">{{ ctrl.cancionActual }}</div>
-      <div class="t-artista">{{ ctrl.artistaActual }}</div>
+      <template v-if="ctrl.timer.activo">
+        <div class="t-nombre">{{ ctrl.timer.pausado ? 'PAUSADO' : 'TIMER' }}</div>
+        <div class="t-artista">{{ tFocus }} restantes</div>
+      </template>
+      <template v-else>
+        <div class="t-nombre">{{ ctrl.cancionActual }}</div>
+        <div class="t-artista">{{ ctrl.artistaActual }}</div>
+      </template>
     </div>
 
     <button class="cerrar" title="Salir (Esc)" @click="cerrar">✕</button>
@@ -22,6 +28,13 @@ import { inject, ref, computed, onMounted, onUnmounted } from 'vue'
 import VisualCanvas from './VisualCanvas.vue'
 const ctrl = inject('ctrl')
 const raiz = ref(null)
+
+const tFocus = computed(() => {
+  const t = ctrl.timer.activo ? ctrl.timer.tiempoRestante : 0
+  const m = Math.floor(Math.max(0, t) / 60)
+  const s = Math.floor(Math.max(0, t) % 60)
+  return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s
+})
 
 const estiloTarjeta = computed(() => ({
   left: `${ctrl.ajustes.visual_titulo_x * 100}%`,

@@ -32,6 +32,7 @@ export function useControlador() {
   const spotifyCargando = ref(false)
   const spotifyTieneCredenciales = ref(false)
   const spotifyModo = ref('portada')
+  const spotifyAuthUrl = ref('')
   const cancionActual = ref('')
   const artistaActual = ref('')
   const portadaActual = ref('')
@@ -63,6 +64,53 @@ export function useControlador() {
   })
   const biblioteca = ref([])
   const mostrarFull = ref(false)
+
+  // ── Timer ──
+  // El timer solo cuenta el tiempo y dispara la alerta LED. QUÉ visual se ve
+  // (Reloj / Tarjeta) se elige en la sección Visuales, no acá.
+  const timer = reactive({
+    activo: false,
+    pausado: false,
+    tiempoTotal: 0,
+    tiempoRestante: 0,
+    progreso: 0,
+    colorAlerta: { r: 255, g: 0, b: 0 },
+    accionAlerta: 'blink',
+    // Visual del timer (se controla desde la página Visuales):
+    modoVisual: 'splitflap',        // 'splitflap' | 'colorcard'
+    usarVisual: true,               // false = mostrar el visual normal durante el timer
+    colorFondoVisual: { r: 10, g: 10, b: 30 },
+  })
+
+  const coloresAlerta = [
+    { nombre: 'Blanco', r: 255, g: 255, b: 255 },
+    { nombre: 'Rojo', r: 255, g: 0, b: 0 },
+    { nombre: 'Naranja', r: 255, g: 128, b: 0 },
+    { nombre: 'Azul', r: 0, g: 100, b: 255 },
+    { nombre: 'Morado', r: 150, g: 0, b: 255 },
+  ]
+
+  const accionesAlerta = [
+    { id: 'flash', label: 'Destello único' },
+    { id: 'blink', label: 'Titileo' },
+    { id: 'fade', label: 'Aparecer y desaparecer' },
+  ]
+
+  // Visuales exclusivos del timer (aparecen en la grilla de Visuales solo
+  // cuando hay un timer activo).
+  const visualesTimer = [
+    { id: 'splitflap', label: 'Reloj', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg>' },
+    { id: 'colorcard', label: 'Tarjeta', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 12h10"/></svg>' },
+  ]
+
+  const fondosCard = [
+    { nombre: 'Negro', r: 10, g: 10, b: 30 },
+    { nombre: 'Gris', r: 40, g: 42, b: 50 },
+    { nombre: 'Azul', r: 15, g: 30, b: 80 },
+    { nombre: 'Verde', r: 10, g: 50, b: 20 },
+    { nombre: 'Granate', r: 60, g: 15, b: 15 },
+    { nombre: 'Violeta', r: 40, g: 10, b: 60 },
+  ]
 
   // ── Cine Mode (ambilight) ──
   const ambilightActivado = ref(false)
@@ -228,6 +276,25 @@ export function useControlador() {
     else debounceAmbi = setTimeout(enviarlo, 150)
   }
 
+  // ── Acciones Timer ──
+  function cfgVisualTimer() {
+    return {
+      tipo: timer.modoVisual,
+      usar: timer.usarVisual,
+      fondo: { ...timer.colorFondoVisual },
+    }
+  }
+  function timerIniciar(tiempo, color, accion) {
+    enviar('timer_iniciar', { tiempo, color, accion, visual: cfgVisualTimer() })
+  }
+  function timerPausar() { enviar('timer_pausar') }
+  function timerReanudar() { enviar('timer_reanudar') }
+  function timerDetener() { enviar('timer_detener') }
+  // Se llama al cambiar el visual del timer desde la página Visuales (en vivo).
+  function timerVisual() {
+    if (timer.activo) enviar('timer_visual', cfgVisualTimer())
+  }
+
   // ── Ajuste genérico (con debounce para sliders/arrastre) ──
   let debounceAjuste = null
   function setAjuste(clave, valor, inmediato = false) {
@@ -268,15 +335,18 @@ export function useControlador() {
   on('spotify_autenticado', () => {
     spotifyAutenticado.value = true
     spotifyCargando.value = false
+    spotifyAuthUrl.value = ''
     enviar('spotify_estado')
   })
   on('spotify_error', (d) => {
     spotifyCargando.value = false
+    spotifyAuthUrl.value = ''
     agregarLog(`Error Spotify: ${d.error}`)
   })
   on('spotify_desconectado', () => {
     spotifyAutenticado.value = false
     spotifySincronizando.value = false
+    spotifyAuthUrl.value = ''
     cancionActual.value = ''
     artistaActual.value = ''
     portadaActual.value = ''
@@ -349,8 +419,39 @@ export function useControlador() {
     colorFondo.g = d.g
     colorFondo.b = d.b
   })
+
+  // ── Handlers Timer ──
+  on('timer_iniciado', (d) => {
+    timer.activo = true
+    timer.pausado = false
+    timer.tiempoTotal = d.tiempo
+    timer.tiempoRestante = d.tiempo
+    timer.progreso = 0
+    // Al arrancar, el visual del timer se activa automáticamente en Visuales.
+    timer.usarVisual = true
+  })
+  on('timer_tick', (d) => {
+    timer.tiempoRestante = d.restante
+    timer.progreso = d.progreso
+  })
+  on('timer_pausado', () => { timer.pausado = true })
+  on('timer_reanudado', () => { timer.pausado = false })
+  on('timer_completado', () => {
+    timer.activo = false
+    timer.pausado = false
+    timer.tiempoRestante = 0
+    timer.progreso = 1
+  })
+  on('timer_detenido', () => {
+    timer.activo = false
+    timer.pausado = false
+    timer.tiempoRestante = 0
+    timer.progreso = 0
+  })
+
   on('spotify_esperando', (d) => {
     spotifyCargando.value = true
+    spotifyAuthUrl.value = d.url || ''
     agregarLog(d.mensaje)
   })
   on('spotify_sincronizando', () => { spotifySincronizando.value = true })
@@ -405,12 +506,14 @@ export function useControlador() {
     conectadoLed, errorConexion, ledEncendido, colorActual, colorFondo, brilloActual, log,
     ritmoActivado, ritmoDisponible, flashColor, flashDeCancion, flashOnly, modoDeteccion,
     spotifyAutenticado, spotifySincronizando, spotifyCargando, spotifyTieneCredenciales,
-    spotifyModo, cancionActual, artistaActual, portadaActual, fuenteColorActual,
+    spotifyModo, spotifyAuthUrl, cancionActual, artistaActual, portadaActual, fuenteColorActual,
     ajustes, biblioteca, mostrarFull,
     dispositivo, dispositivos, escaneando, visual, beatActivo, beatTick, beatEnergia,
     ambilightActivado, ambilightDisponible, monitores,
+    timer,
     // constantes
     modosDeteccion, coloresFlash, slidersTransicion,
+    coloresAlerta, accionesAlerta, visualesTimer, fondosCard,
     // acciones
     aplicarColor, aplicarBrillo, togglePower, encender, apagar, probar, arcoiris,
     iniciarSesionSpotify, cerrarSesionSpotify, iniciarSincronizacion, detenerSincronizacion,
@@ -421,5 +524,6 @@ export function useControlador() {
     escanear, conectarDispositivo, iniciarVisual, detenerVisual,
     abrirVisualFull, cerrarVisualFull, setAjuste,
     toggleAmbilight, cargarMonitores, setAmbilight,
+    timerIniciar, timerPausar, timerReanudar, timerDetener, timerVisual,
   })
 }
