@@ -261,13 +261,20 @@
     function drawSplitFlap(dt) {
       fondo();
 
-      var mins = Math.max(0, Math.floor(estado.timerRestante / 60));
-      var segs = Math.max(0, Math.floor(estado.timerRestante % 60));
-      var mm = String(mins); if (mm.length < 2) mm = '0' + mm;
-      var ss = String(segs); if (ss.length < 2) ss = '0' + ss;
-      var chars = (mm + ss).split('');
+      var total = Math.max(0, Math.floor(estado.timerRestante));
+      var hrs = Math.floor(total / 3600);
+      var mins = Math.floor((total % 3600) / 60);
+      var segs = total % 60;
+      function p2(v) { v = String(v); return v.length < 2 ? '0' + v : v; }
+      // Con horas muestra HH:MM:SS; si no, MM:SS.
+      var grupos = hrs > 0 ? [p2(hrs), p2(mins), p2(segs)] : [p2(mins), p2(segs)];
+      var chars = grupos.join('').split('');
       var n = chars.length;
-      var colonIdx = mm.length; // el colon va antes de este dígito (entre min y seg)
+      var nColon = grupos.length - 1;
+      // Índices de dígito donde va un colon antes (inicio de cada grupo salvo el 1º).
+      var colonAntes = {};
+      var acc = 0;
+      for (var gi = 0; gi < grupos.length - 1; gi++) { acc += grupos[gi].length; colonAntes[acc] = true; }
 
       // (Re)inicializa el estado de flip si cambió la cantidad de dígitos.
       if (!flapShown || flapShown.length !== n) {
@@ -285,12 +292,12 @@
         if (flapT[i] < 1) flapT[i] = Math.min(1, flapT[i] + dt / 0.45);
       }
 
-      // Layout centrado.
-      var tileW = Math.min((W * 0.8) / (n + 0.6), H * 0.32);
+      // Layout centrado (las fichas se achican al haber más dígitos).
+      var tileW = Math.min((W * 0.82) / (n + 1.5), H * 0.3);
       var tileH = tileW * 1.5;
       var gap = tileW * 0.16;
       var colonW = tileW * 0.6;
-      var totalW = tileW * n + gap * n + colonW; // n gaps + colon
+      var totalW = tileW * n + colonW * nColon + gap * (n + nColon - 1);
       var topY = H / 2 - tileH / 2;
       var x = (W - totalW) / 2;
 
@@ -302,7 +309,7 @@
       ctx.fillText('T I M E R', W / 2, topY - tileH * 0.16);
 
       for (var j = 0; j < n; j++) {
-        if (j === colonIdx) { sfColon(x, topY, colonW, tileH); x += colonW + gap; }
+        if (colonAntes[j]) { sfColon(x, topY, colonW, tileH); x += colonW + gap; }
         if (flapT[j] >= 1) sfStatic(x, topY, tileW, tileH, flapShown[j]);
         else sfFlip(x, topY, tileW, tileH, flapFrom[j], flapShown[j], flapT[j]);
         x += tileW + gap;
@@ -337,13 +344,19 @@
       var ink = lum > 0.55 ? '0,0,0' : '255,255,255';
       var A = function (a) { return 'rgba(' + ink + ',' + a + ')'; };
 
-      var mins = Math.max(0, Math.floor(estado.timerRestante / 60));
-      var segs = Math.max(0, Math.floor(estado.timerRestante % 60));
-      var tiempo = (mins < 10 ? '0' : '') + mins + ':' + (segs < 10 ? '0' : '') + segs;
+      var totalCC = Math.max(0, Math.floor(estado.timerRestante));
+      var hCC = Math.floor(totalCC / 3600);
+      var mCC = Math.floor((totalCC % 3600) / 60);
+      var sCC = totalCC % 60;
+      var d2 = function (v) { return (v < 10 ? '0' : '') + v; };
+      var tiempo = hCC > 0
+        ? hCC + ':' + d2(mCC) + ':' + d2(sCC)
+        : d2(mCC) + ':' + d2(sCC);
 
       var pocoTiempo = estado.timerRestante > 0 && estado.timerRestante < 60;
       var pulso = pocoTiempo ? (0.9 + 0.1 * Math.sin(t * 5)) : 1;
-      var fontSize = Math.min(W, H) * 0.2 * pulso;
+      // Con horas el texto es más largo: se reduce un poco para que quepa.
+      var fontSize = Math.min(W, H) * (hCC > 0 ? 0.15 : 0.2) * pulso;
 
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
