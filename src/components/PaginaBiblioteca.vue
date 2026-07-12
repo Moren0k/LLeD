@@ -51,7 +51,7 @@ function editar(id, hex) {
 </script>
 
 <style scoped>
-.pagina { display: flex; flex-direction: column; gap: 16px; }
+/* Estilos propios de la página; el resto viene del sistema (styles.css). */
 .head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 
 .vacio { padding: 28px 18px; display: flex; flex-direction: column; gap: 6px; align-items: center; text-align: center; color: var(--text2); font-size: 0.9rem; }
@@ -62,7 +62,7 @@ function editar(id, hex) {
 
 .color {
   position: relative; width: 38px; height: 38px; border-radius: 12px; flex-shrink: 0; cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
 .color input[type="color"] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: none; padding: 0; }
 
@@ -70,13 +70,9 @@ function editar(id, hex) {
 .nombre { font-size: 0.9rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artista { font-size: 0.78rem; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.badge {
-  font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-  color: var(--tint); background: rgba(125,75,255,0.16); padding: 3px 7px; border-radius: 7px; flex-shrink: 0;
-}
 .del {
   background: none; border: none; color: var(--text3); font-size: 0.9rem; cursor: pointer;
   padding: 5px 7px; border-radius: 8px; flex-shrink: 0; transition: all 0.15s;
 }
-.del:hover { color: var(--red); background: rgba(255,91,82,0.14); }
+.del:hover { color: var(--red); background: rgba(255, 91, 82, 0.14); }
 </style>

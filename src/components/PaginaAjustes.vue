@@ -36,7 +36,7 @@
         >
           <span class="disp-nombre">
             {{ d.nombre }}
-            <span v-if="d.probable_led" class="pill">LED</span>
+            <span v-if="d.probable_led" class="badge">LED</span>
           </span>
           <span class="disp-mac">{{ d.direccion }}</span>
         </button>
@@ -60,7 +60,7 @@
     </div>
 
     <div class="glass card" v-if="ctrl.ajustes.modo_transicion === 'gradiente'">
-      <span class="field-label bloque">Duración de los fundidos</span>
+      <span class="sub">Duración de los fundidos</span>
       <div class="fila" v-for="s in ctrl.slidersTransicion" :key="s.clave">
         <span class="mini-label">{{ s.label }}</span>
         <input
@@ -70,6 +70,35 @@
           @input="ctrl.cambiarDuracion(s.clave, $event.target.value)"
         />
         <span class="valor">{{ Number(ctrl.ajustes[s.clave]).toFixed(2) }}s</span>
+      </div>
+    </div>
+
+    <!-- Fondo de la aplicación -->
+    <div class="glass card">
+      <div class="fila-titulo">
+        <span class="sub">Fondo de la aplicación</span>
+        <AyudaInfo>Elegí un fondo animado que sigue el color y el ritmo de la música, o un color sólido fijo.</AyudaInfo>
+      </div>
+      <div class="segmented">
+        <button :class="{ active: ctrl.fondoTipo === 'visuales' }" @click="ctrl.setFondoTipo('visuales')">Visuales</button>
+        <button :class="{ active: ctrl.fondoTipo === 'solido' }" @click="ctrl.setFondoTipo('solido')">Color sólido</button>
+      </div>
+      <SelectorColor
+        v-if="ctrl.fondoTipo === 'solido'"
+        :model-value="ctrl.fondoColor"
+        @update:model-value="ctrl.setFondoColor"
+      />
+    </div>
+
+    <!-- Comportamiento al cerrar -->
+    <div class="glass card">
+      <div class="fila-titulo">
+        <span class="sub">Al cerrar la ventana</span>
+        <AyudaInfo><b>Salir:</b> cierra la aplicación por completo. <b>Minimizar:</b> la envía al área de notificación y sigue disponible desde ese icono, sin ocupar la barra de tareas.</AyudaInfo>
+      </div>
+      <div class="segmented">
+        <button :class="{ active: ctrl.cerrarComportamiento === 'salir' }" @click="ctrl.setCerrarComportamiento('salir')">Salir</button>
+        <button :class="{ active: ctrl.cerrarComportamiento === 'minimizar' }" @click="ctrl.setCerrarComportamiento('minimizar')">Minimizar</button>
       </div>
     </div>
 
@@ -91,6 +120,7 @@
 <script setup>
 import { inject, ref } from 'vue'
 import AyudaInfo from './AyudaInfo.vue'
+import SelectorColor from './SelectorColor.vue'
 const ctrl = inject('ctrl')
 const msg = ref('')
 
@@ -111,18 +141,8 @@ function borrar() {
 </script>
 
 <style scoped>
-.pagina { display: flex; flex-direction: column; gap: 16px; }
-.card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-.bloque { display: block; }
-.fila { display: flex; align-items: center; gap: 12px; }
+/* Estilos propios de la página; el resto viene del sistema (styles.css). */
 .mini-label { font-size: 0.8rem; color: var(--text2); min-width: 78px; }
-.valor { font-size: 0.82rem; font-weight: 600; color: var(--text2); min-width: 44px; text-align: right; }
-.nota { font-size: 0.78rem; color: var(--text3); line-height: 1.55; }
-
-/* Reinicio */
-.fila-titulo { display: flex; align-items: center; gap: 8px; }
-.sub { font-size: 0.95rem; font-weight: 600; }
-.acciones { display: flex; gap: 8px; flex-wrap: wrap; }
 .acciones .btn { flex: 1; min-width: 150px; }
 .btn-glass.peligro { color: var(--red); }
 .btn-glass.peligro:hover { background: rgba(255, 91, 82, 0.14); border-color: rgba(255, 91, 82, 0.4); }
@@ -130,23 +150,20 @@ function borrar() {
 
 /* Dispositivo */
 .fila-disp { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.estado-disp { display: flex; align-items: center; gap: 10px; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
-.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
-.disp-text { display: flex; flex-direction: column; }
+.estado-disp { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.disp-text { display: flex; flex-direction: column; min-width: 0; }
 .disp-titulo { font-size: 0.9rem; font-weight: 600; }
-.disp-sub { font-size: 0.75rem; color: var(--text2); font-family: 'SF Mono', 'Consolas', monospace; }
+.disp-sub { font-size: 0.75rem; color: var(--text2); font-family: 'SF Mono', 'Consolas', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .lista-disp { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
 .disp-item {
   display: flex; flex-direction: column; gap: 2px; text-align: left;
-  background: rgba(0,0,0,0.25); border: 1px solid var(--glass-border);
-  border-radius: 12px; padding: 10px 12px; cursor: pointer; font-family: inherit;
+  background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm); padding: 10px 12px; cursor: pointer; font-family: inherit;
   transition: border-color 0.15s, background 0.15s;
 }
-.disp-item:hover { border-color: var(--glass-border-strong); background: rgba(255,255,255,0.06); }
+.disp-item:hover { border-color: var(--glass-border-strong); background: rgba(255, 255, 255, 0.06); }
 .disp-item.actual { border-color: var(--tint); }
 .disp-nombre { font-size: 0.86rem; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
 .disp-mac { font-size: 0.72rem; color: var(--text3); font-family: 'SF Mono', 'Consolas', monospace; }
-.pill { font-size: 0.6rem; font-weight: 700; color: var(--tint); background: rgba(125,75,255,0.16); padding: 1px 6px; border-radius: 6px; }
 </style>

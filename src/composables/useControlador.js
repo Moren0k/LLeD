@@ -65,6 +65,40 @@ export function useControlador() {
   const biblioteca = ref([])
   const mostrarFull = ref(false)
 
+  // ── Preferencias de interfaz (se guardan localmente y se restauran al abrir) ──
+  const cerrarComportamiento = ref(localStorage.getItem('lled_cerrar') || 'salir') // 'salir' | 'minimizar'
+  const fondoTipo = ref(localStorage.getItem('lled_fondo_tipo') || 'visuales')     // 'visuales' | 'solido'
+  const fondoColor = reactive(_cargarFondoColor())
+
+  function _cargarFondoColor() {
+    try {
+      const v = JSON.parse(localStorage.getItem('lled_fondo_color'))
+      if (v && Number.isFinite(v.r) && Number.isFinite(v.g) && Number.isFinite(v.b)) return v
+    } catch (e) { /* usa el valor por defecto */ }
+    return { r: 10, g: 12, b: 22 }
+  }
+
+  function setCerrarComportamiento(modo) {
+    cerrarComportamiento.value = modo
+    localStorage.setItem('lled_cerrar', modo)
+    if (window.electronAPI && window.electronAPI.setCerrarModo) {
+      window.electronAPI.setCerrarModo(modo)
+    }
+  }
+  function setFondoTipo(tipo) {
+    fondoTipo.value = tipo
+    localStorage.setItem('lled_fondo_tipo', tipo)
+  }
+  function setFondoColor({ r, g, b }) {
+    fondoColor.r = r; fondoColor.g = g; fondoColor.b = b
+    localStorage.setItem('lled_fondo_color', JSON.stringify({ r, g, b }))
+  }
+
+  // Informa al proceso principal la preferencia de cierre al arrancar.
+  if (window.electronAPI && window.electronAPI.setCerrarModo) {
+    window.electronAPI.setCerrarModo(cerrarComportamiento.value)
+  }
+
   // ── Timer ──
   // El timer solo cuenta el tiempo y dispara la alerta LED. QUÉ visual se ve
   // (Reloj / Tarjeta) se elige en la sección Visuales, no acá.
@@ -91,9 +125,9 @@ export function useControlador() {
   ]
 
   const accionesAlerta = [
-    { id: 'flash', label: 'Destello único' },
+    { id: 'flash', label: 'Destello' },
     { id: 'blink', label: 'Titileo' },
-    { id: 'fade', label: 'Aparecer y desaparecer' },
+    { id: 'fade', label: 'Fundido' },
   ]
 
   // Visuales exclusivos del timer (aparecen en la grilla de Visuales solo
@@ -508,6 +542,7 @@ export function useControlador() {
     spotifyAutenticado, spotifySincronizando, spotifyCargando, spotifyTieneCredenciales,
     spotifyModo, spotifyAuthUrl, cancionActual, artistaActual, portadaActual, fuenteColorActual,
     ajustes, biblioteca, mostrarFull,
+    cerrarComportamiento, fondoTipo, fondoColor,
     dispositivo, dispositivos, escaneando, visual, beatActivo, beatTick, beatEnergia,
     ambilightActivado, ambilightDisponible, monitores,
     timer,
@@ -525,5 +560,6 @@ export function useControlador() {
     abrirVisualFull, cerrarVisualFull, setAjuste,
     toggleAmbilight, cargarMonitores, setAmbilight,
     timerIniciar, timerPausar, timerReanudar, timerDetener, timerVisual,
+    setCerrarComportamiento, setFondoTipo, setFondoColor,
   })
 }

@@ -13,7 +13,7 @@
 
     <template v-if="!ctrl.timer.activo">
       <div class="glass card">
-        <span class="field-label bloque">Duración</span>
+        <span class="sub">Duración</span>
         <div class="presets">
           <button
             v-for="p in presets"
@@ -42,7 +42,7 @@
       </div>
 
       <div class="glass card">
-        <span class="field-label bloque">Color de alerta</span>
+        <span class="sub">Color de alerta</span>
         <div class="swatches">
           <button
             v-for="c in ctrl.coloresAlerta"
@@ -57,17 +57,17 @@
       </div>
 
       <div class="glass card">
-        <div class="fila">
-          <span class="field-label">Acción al finalizar</span>
-          <AyudaInfo><b>Destello único:</b> el color aparece 0.5s y se apaga. <b>Titileo:</b> parpadea 6 veces. <b>Aparecer y desaparecer:</b> fade in y fade out suave.</AyudaInfo>
-          <div class="segmented">
-            <button
-              v-for="a in ctrl.accionesAlerta"
-              :key="a.id"
-              :class="{ active: ctrl.timer.accionAlerta === a.id }"
-              @click="ctrl.timer.accionAlerta = a.id"
-            >{{ a.label }}</button>
-          </div>
+        <div class="fila-titulo">
+          <span class="sub">Acción al finalizar</span>
+          <AyudaInfo><b>Destello:</b> el color aparece un instante y se apaga. <b>Titileo:</b> parpadea varias veces. <b>Fundido:</b> aparece y desaparece de forma suave.</AyudaInfo>
+        </div>
+        <div class="segmented">
+          <button
+            v-for="a in ctrl.accionesAlerta"
+            :key="a.id"
+            :class="{ active: ctrl.timer.accionAlerta === a.id }"
+            @click="ctrl.timer.accionAlerta = a.id"
+          >{{ a.label }}</button>
         </div>
       </div>
 
@@ -95,7 +95,7 @@
         Elegí el visual del reloj (Reloj / Tarjeta) en la sección <b>Visuales</b>.
       </p>
 
-      <div class="acciones">
+      <div class="timer-acciones">
         <button v-if="!ctrl.timer.pausado" class="btn btn-tint" @click="ctrl.timerPausar()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
           Pausar
@@ -104,7 +104,7 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           Reanudar
         </button>
-        <button class="btn btn-danger" @click="detener">
+        <button class="btn btn-tint peligro" @click="detener">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
           Detener
         </button>
@@ -198,16 +198,11 @@ const displayProgress = computed(() => {
 </script>
 
 <style scoped>
-.pagina { display: flex; flex-direction: column; gap: 16px; }
-.card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-.bloque { display: block; }
-.full { width: 100%; justify-content: center; }
-.full:disabled { opacity: 0.4; cursor: default; box-shadow: none; }
-
+/* Estilos propios de la página; el resto viene del sistema (styles.css). */
 .presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .preset-btn {
   padding: 10px 8px;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--glass-border);
   background: rgba(255, 255, 255, 0.04);
   color: var(--text2);
@@ -228,7 +223,7 @@ const displayProgress = computed(() => {
 /* Personalizado (horas + minutos, sin flechas) */
 .custom {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding: 12px 14px; border-radius: 14px;
+  gap: 12px; padding: 12px 14px; border-radius: var(--radius-sm);
   border: 1px solid var(--glass-border); background: rgba(255, 255, 255, 0.03);
   cursor: text; transition: all 0.15s;
 }
@@ -248,20 +243,6 @@ const displayProgress = computed(() => {
 .num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .num:focus { border-color: var(--tint); }
 .u { font-size: 0.78rem; font-weight: 600; color: var(--text3); }
-
-.fila { display: flex; align-items: center; gap: 12px; }
-
-.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
-.swatch {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: all 0.15s;
-  outline: none;
-}
-.swatch:hover { transform: scale(1.12); }
-.swatch.selected { border-color: #fff; box-shadow: 0 0 12px rgba(255,255,255,0.3); }
 
 .timer-card { align-items: center; padding: 32px 18px; }
 .timer-display { text-align: center; width: 100%; }
@@ -299,7 +280,7 @@ const displayProgress = computed(() => {
   margin: -4px 0 0;
 }
 
-.acciones {
+.timer-acciones {
   display: flex;
   gap: 12px;
   justify-content: center;

@@ -12,7 +12,7 @@
     </div>
 
     <div class="glass card">
-      <span class="field-label bloque">Paleta rápida</span>
+      <span class="sub">Paleta rápida</span>
       <div class="paleta">
         <button
           v-for="c in swatches"
@@ -73,26 +73,13 @@ const swatches = [
 </script>
 
 <style scoped>
-.pagina { display: flex; flex-direction: column; gap: 16px; }
-.head { margin-bottom: 2px; }
-.card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-.bloque { display: block; }
-
+/* Estilos propios de la página; el resto viene del sistema (styles.css). */
 .paleta {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 8px;
 }
-.paleta .swatch { width: 100%; aspect-ratio: 1; }
+.paleta .swatch { width: 100%; height: auto; aspect-ratio: 1; }
 
-.fila { display: flex; align-items: center; gap: 12px; }
-.valor {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--text2);
-  min-width: 30px;
-  text-align: right;
-}
-.acciones { display: flex; gap: 8px; flex-wrap: wrap; }
 .acciones .btn { flex: 1; min-width: 90px; }
 </style>
