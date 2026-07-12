@@ -13,32 +13,63 @@
 
     <template v-if="!ctrl.timer.activo">
       <div class="glass card">
-        <span class="sub">Duración</span>
-        <div class="presets">
-          <button
-            v-for="p in presets"
-            :key="p.seconds"
-            class="preset-btn"
-            :class="{ selected: !personalizado && tiempoPreset === p.seconds }"
-            @click="seleccionarPreset(p.seconds)"
-          >{{ p.label }}</button>
+        <div class="fila-titulo">
+          <span class="sub">Cuándo avisar</span>
+          <AyudaInfo>Elegí una <b>duración</b> (cuenta regresiva) o una <b>hora del día</b>. Al cumplirse, los LEDs te avisarán. Si la hora ya pasó hoy, será mañana.</AyudaInfo>
+        </div>
+        <div class="segmented">
+          <button :class="{ active: modoTiempo === 'duracion' }" @click="modoTiempo = 'duracion'">Duración</button>
+          <button :class="{ active: modoTiempo === 'hora' }" @click="modoTiempo = 'hora'">Hora del día</button>
         </div>
 
-        <div class="custom" :class="{ activo: personalizado }" @click="personalizado = true">
-          <span class="custom-lbl">Personalizado</span>
-          <div class="hm">
-            <div class="hm-campo">
-              <input class="num" type="text" inputmode="numeric" maxlength="2"
-                :value="horas" placeholder="0" @input="onHoras" @focus="personalizado = true" />
-              <span class="u">h</span>
-            </div>
-            <div class="hm-campo">
-              <input class="num" type="text" inputmode="numeric" maxlength="3"
-                :value="minutos" placeholder="00" @input="onMinutos" @focus="personalizado = true" />
-              <span class="u">min</span>
+        <template v-if="modoTiempo === 'duracion'">
+          <div class="presets">
+            <button
+              v-for="p in presets"
+              :key="p.seconds"
+              class="preset-btn"
+              :class="{ selected: !personalizado && tiempoPreset === p.seconds }"
+              @click="seleccionarPreset(p.seconds)"
+            >{{ p.label }}</button>
+          </div>
+
+          <div class="custom" :class="{ activo: personalizado }" @click="personalizado = true">
+            <span class="custom-lbl">Personalizado</span>
+            <div class="hm">
+              <div class="hm-campo">
+                <input class="num" type="text" inputmode="numeric" maxlength="2"
+                  :value="horas" placeholder="0" @input="onHoras" @focus="personalizado = true" />
+                <span class="u">h</span>
+              </div>
+              <div class="hm-campo">
+                <input class="num" type="text" inputmode="numeric" maxlength="3"
+                  :value="minutos" placeholder="00" @input="onMinutos" @focus="personalizado = true" />
+                <span class="u">min</span>
+              </div>
             </div>
           </div>
-        </div>
+        </template>
+
+        <template v-else>
+          <div class="custom activo">
+            <span class="custom-lbl">Hora</span>
+            <div class="hm">
+              <div class="hm-campo">
+                <input class="num" type="text" inputmode="numeric" maxlength="2"
+                  :value="horaDia" placeholder="00" @input="onHoraDia" />
+                <span class="u">h</span>
+              </div>
+              <div class="hm-campo">
+                <input class="num" type="text" inputmode="numeric" maxlength="2"
+                  :value="minDia" placeholder="00" @input="onMinDia" />
+                <span class="u">m</span>
+              </div>
+            </div>
+          </div>
+          <p class="pista-hora" v-if="segundosElegidos >= 1">
+            Sonará {{ esManana ? 'mañana' : 'hoy' }} a las {{ etiquetaHora }} · faltan {{ faltanTexto }}
+          </p>
+        </template>
       </div>
 
       <div class="glass card">
@@ -128,10 +159,13 @@ const presets = [
   { label: '1 h', seconds: 3600 },
 ]
 
-const tiempoPreset = ref(1500)   // segundos del preset elegido
+const modoTiempo = ref('duracion') // 'duracion' | 'hora'
+const tiempoPreset = ref(1500)     // segundos del preset elegido
 const horas = ref('')
 const minutos = ref('')
 const personalizado = ref(false)
+const horaDia = ref('')            // hora del día 0-23
+const minDia = ref('')             // minuto del día 0-59
 
 function seleccionarPreset(seg) {
   tiempoPreset.value = seg
@@ -150,9 +184,31 @@ function onMinutos(e) {
   const d = soloDigitos(e.target.value)
   minutos.value = d === '' ? '' : Math.min(999, parseInt(d, 10))
 }
+function onHoraDia(e) {
+  const d = soloDigitos(e.target.value)
+  horaDia.value = d === '' ? '' : Math.min(23, parseInt(d, 10))
+}
+function onMinDia(e) {
+  const d = soloDigitos(e.target.value)
+  minDia.value = d === '' ? '' : Math.min(59, parseInt(d, 10))
+}
 
-// Segundos finales según preset o valor personalizado (horas + minutos).
+const horaValida = computed(() => horaDia.value !== '' && minDia.value !== '')
+
+// Segundos desde ahora hasta la hora del día elegida (mañana si ya pasó hoy).
+function segundosHastaHora() {
+  if (!horaValida.value) return 0
+  const ahora = new Date()
+  const objetivo = new Date()
+  objetivo.setHours(parseInt(horaDia.value, 10), parseInt(minDia.value, 10), 0, 0)
+  let diff = Math.round((objetivo.getTime() - ahora.getTime()) / 1000)
+  if (diff <= 0) diff += 86400
+  return diff
+}
+
+// Segundos finales según el modo elegido.
 const segundosElegidos = computed(() => {
+  if (modoTiempo.value === 'hora') return segundosHastaHora()
   if (personalizado.value) {
     const h = parseInt(horas.value, 10) || 0
     const m = parseInt(minutos.value, 10) || 0
@@ -161,17 +217,37 @@ const segundosElegidos = computed(() => {
   return tiempoPreset.value
 })
 
+function formatoDuracion(s) {
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (h > 0) return h + ' h' + (m ? ' ' + m + ' min' : '')
+  return m + ' min'
+}
+
+const esManana = computed(() => {
+  if (!horaValida.value) return false
+  const ahora = new Date()
+  const objetivo = new Date()
+  objetivo.setHours(parseInt(horaDia.value, 10), parseInt(minDia.value, 10), 0, 0)
+  return objetivo.getTime() <= ahora.getTime()
+})
+const etiquetaHora = computed(() => {
+  const hh = String(parseInt(horaDia.value, 10) || 0).padStart(2, '0')
+  const mm = String(parseInt(minDia.value, 10) || 0).padStart(2, '0')
+  return `${hh}:${mm}`
+})
+const faltanTexto = computed(() => formatoDuracion(segundosElegidos.value))
+
 const etiquetaTiempo = computed(() => {
   const s = segundosElegidos.value
   if (s < 1) return ''
-  const h = Math.floor(s / 3600)
-  const m = Math.floor((s % 3600) / 60)
-  if (h > 0) return '· ' + h + ' h' + (m ? ' ' + m + ' min' : '')
-  return '· ' + m + ' min'
+  if (modoTiempo.value === 'hora') return '· ' + etiquetaHora.value
+  return '· ' + formatoDuracion(s)
 })
 
 function iniciar() {
-  const seg = segundosElegidos.value
+  // En modo hora se recalcula al instante para máxima precisión.
+  const seg = modoTiempo.value === 'hora' ? segundosHastaHora() : segundosElegidos.value
   if (seg < 1) return
   ctrl.timerIniciar(seg, { ...ctrl.timer.colorAlerta }, ctrl.timer.accionAlerta)
 }
@@ -243,6 +319,7 @@ const displayProgress = computed(() => {
 .num::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .num:focus { border-color: var(--tint); }
 .u { font-size: 0.78rem; font-weight: 600; color: var(--text3); }
+.pista-hora { font-size: 0.8rem; color: var(--text2); line-height: 1.5; margin: -2px 2px 0; }
 
 .timer-card { align-items: center; padding: 32px 18px; }
 .timer-display { text-align: center; width: 100%; }
