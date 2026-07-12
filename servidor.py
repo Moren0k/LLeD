@@ -29,7 +29,10 @@ El color calculado se guarda en cache para que la próxima vez sea inmediato.
 
 import asyncio
 import json
+import math
 import os
+import random
+import time
 
 from typing import Optional
 
@@ -41,7 +44,7 @@ from timer import TemporizadorTimer
 from audio_ritmo_final import DetectorRitmo
 from cache_colores import CacheColores, FUENTE_AUTO, FUENTE_USUARIO
 from extractor_color import portada_a_rgb
-from led import TiraLED
+from led import TiraLED, _hsv_a_rgb
 from rutas import ruta_datos
 from spotify_cliente import ClienteSpotify, cargar_config_spotify
 from transiciones import MotorTransiciones
@@ -277,6 +280,11 @@ async def manejar_cliente(websocket):
     ritmo_activado = False
     tarea_ritmo: Optional[asyncio.Task] = None
 
+    # Efectos de ambiente (vela, fuego, respiración, pulso, ciclo).
+    ambiente_activado = False
+    ambiente_efecto = "respiracion"
+    tarea_ambiente: Optional[asyncio.Task] = None
+
     # Estado del visual del timer (elegido desde la sección Visuales del front).
     timer_visual_tipo = "splitflap"
     timer_visual_usar = True
@@ -444,6 +452,8 @@ async def manejar_cliente(websocket):
                     "visual": visual_hub.info(),
                     "ambilight_activado": ambilight_activado,
                     "ambilight_disponible": capturador.disponible,
+                    "ambiente_activado": ambiente_activado,
+                    "ambiente_efecto": ambiente_efecto,
                 }))
 
             elif comando == "spotify_info":
@@ -549,6 +559,38 @@ async def manejar_cliente(websocket):
                 await tira.color(estado.r_base, estado.g_base, estado.b_base)
                 await websocket.send(json.dumps({
                     "ok": True, "evento": "ritmo_detenido"
+                }))
+
+            # ── Comandos Ambiente (efectos para el silencio) ──────────
+
+            elif comando == "ambiente_iniciar":
+                ef = datos.get("efecto", ambiente_efecto)
+                ambiente_efecto = ef if ef in EFECTOS_AMBIENTE else "respiracion"
+                ambiente_activado = True
+                if tarea_ambiente:
+                    tarea_ambiente.cancel()
+                tarea_ambiente = asyncio.create_task(
+                    _bucle_ambiente(websocket, estado, motor, lambda: ambiente_efecto)
+                )
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ambiente_iniciado", "efecto": ambiente_efecto
+                }))
+
+            elif comando == "ambiente_efecto":
+                ef = datos.get("efecto", ambiente_efecto)
+                if ef in EFECTOS_AMBIENTE:
+                    ambiente_efecto = ef
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ambiente_efecto_cambiado", "efecto": ambiente_efecto
+                }))
+
+            elif comando == "ambiente_detener":
+                ambiente_activado = False
+                if tarea_ambiente:
+                    tarea_ambiente.cancel()
+                    tarea_ambiente = None
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "ambiente_detenido"
                 }))
 
             elif comando == "ritmo_flash_color":
@@ -908,7 +950,67 @@ async def manejar_cliente(websocket):
         if tarea_ambilight:
             tarea_ambilight.cancel()
             tarea_ambilight = None
+        if tarea_ambiente:
+            tarea_ambiente.cancel()
+            tarea_ambiente = None
         await tira.desconectar()
+
+
+EFECTOS_AMBIENTE = ("respiracion", "pulso", "vela", "fuego", "ciclo")
+
+
+def _color_base_ambiente(estado: EstadoLED) -> tuple[int, int, int]:
+    """Color sobre el que respiran/pulsan los efectos (cálido si está en negro)."""
+    if estado.r_base or estado.g_base or estado.b_base:
+        return (estado.r_base, estado.g_base, estado.b_base)
+    return (255, 150, 60)
+
+
+def _escala_rgb(col: tuple[int, int, int], f: float) -> tuple[int, int, int]:
+    f = max(0.0, min(1.0, f))
+    return (int(col[0] * f), int(col[1] * f), int(col[2] * f))
+
+
+async def _bucle_ambiente(websocket, estado: EstadoLED, motor, obtener_efecto):
+    """Efectos de ambiente para el silencio (sin música): respiración, pulso,
+    vela, fuego y ciclo de color. Cambia el color de la tira de forma continua.
+    """
+    fps = 20
+    t0 = time.time()
+    flick = 1.0        # nivel actual del titileo (vela/fuego)
+    flick_obj = 1.0    # objetivo del titileo
+    try:
+        while True:
+            ahora = time.time() - t0
+            efecto = obtener_efecto()
+
+            if efecto == "respiracion":
+                base = _color_base_ambiente(estado)
+                f = 0.12 + 0.88 * (0.5 + 0.5 * math.sin(ahora * (2 * math.pi / 6.0)))
+                r, g, b = _escala_rgb(base, f)
+            elif efecto == "pulso":
+                base = _color_base_ambiente(estado)
+                s = 0.5 + 0.5 * math.sin(ahora * (2 * math.pi / 3.2))
+                f = 0.08 + 0.92 * (s * s)  # curva más marcada que la respiración
+                r, g, b = _escala_rgb(base, f)
+            elif efecto == "ciclo":
+                h = (ahora / 45.0 % 1.0) * 360.0
+                r, g, b = _hsv_a_rgb(h, 0.85, 0.9)
+            else:  # vela / fuego
+                if efecto == "fuego":
+                    lo, hi, col = 0.32, 1.0, (255, 65, 10)
+                else:  # vela
+                    lo, hi, col = 0.5, 1.0, (255, 130, 40)
+                if random.random() < 0.25:
+                    flick_obj = random.uniform(lo, hi)
+                flick += (flick_obj - flick) * 0.35
+                jitter = 1.0 + random.uniform(-0.05, 0.05)
+                r, g, b = _escala_rgb(col, flick * jitter)
+
+            await motor.aplicar(r, g, b)
+            await asyncio.sleep(1.0 / fps)
+    except asyncio.CancelledError:
+        pass
 
 
 async def _bucle_ritmo(websocket, estado: EstadoLED, detector):

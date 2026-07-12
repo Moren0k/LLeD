@@ -152,6 +152,28 @@ export function useControlador() {
     { nombre: 'Violeta', r: 40, g: 10, b: 60 },
   ]
 
+  // ── Efectos de ambiente (para el silencio) ──
+  const ambienteActivado = ref(false)
+  const ambienteEfecto = ref('respiracion')
+  const efectosAmbiente = [
+    { id: 'respiracion', label: 'Respiración', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12c3-7 15-7 18 0"/><path d="M3 12c3 7 15 7 18 0"/></svg>' },
+    { id: 'pulso', label: 'Pulso', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h5l2-6 4 12 2-6h7"/></svg>' },
+    { id: 'vela', label: 'Vela', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c2 2.5 3 4 3 6a3 3 0 0 1-6 0c0-2 1-3.5 3-6z"/><path d="M12 12v6"/><path d="M8 21h8"/></svg>' },
+    { id: 'fuego', label: 'Fuego', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c3 4 5 6 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 .5 1 1.5 1.5 2 1 0-2-1-4 1-7z"/></svg>' },
+    { id: 'ciclo', label: 'Ciclo de color', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg>' },
+  ]
+  function iniciarAmbiente(efecto) { enviar('ambiente_iniciar', { efecto }) }
+  function cambiarEfectoAmbiente(efecto) { enviar('ambiente_efecto', { efecto }) }
+  function detenerAmbiente() { enviar('ambiente_detener') }
+  function toggleEfectoAmbiente(efecto) {
+    if (ambienteActivado.value) {
+      if (ambienteEfecto.value === efecto) detenerAmbiente()
+      else cambiarEfectoAmbiente(efecto)
+    } else {
+      iniciarAmbiente(efecto)
+    }
+  }
+
   // ── Cine Mode (ambilight) ──
   const ambilightActivado = ref(false)
   const ambilightDisponible = ref(false)
@@ -415,7 +437,13 @@ export function useControlador() {
     if (d.visual) Object.assign(visual, d.visual)
     if (d.ambilight_activado !== undefined) ambilightActivado.value = d.ambilight_activado
     if (d.ambilight_disponible !== undefined) ambilightDisponible.value = d.ambilight_disponible
+    if (d.ambiente_activado !== undefined) ambienteActivado.value = d.ambiente_activado
+    if (d.ambiente_efecto) ambienteEfecto.value = d.ambiente_efecto
   })
+
+  on('ambiente_iniciado', (d) => { ambienteActivado.value = true; if (d.efecto) ambienteEfecto.value = d.efecto })
+  on('ambiente_detenido', () => { ambienteActivado.value = false })
+  on('ambiente_efecto_cambiado', (d) => { if (d.efecto) ambienteEfecto.value = d.efecto })
 
   on('ambilight_activado', () => { ambilightActivado.value = true })
   on('ambilight_detenido', () => { ambilightActivado.value = false })
@@ -605,6 +633,7 @@ export function useControlador() {
     cerrarComportamiento, fondoTipo, fondoColor,
     dispositivo, dispositivos, escaneando, visual, beatActivo, beatTick, beatEnergia,
     ambilightActivado, ambilightDisponible, monitores,
+    ambienteActivado, ambienteEfecto, efectosAmbiente,
     timer,
     // constantes
     modosDeteccion, coloresFlash, slidersTransicion,
@@ -619,6 +648,7 @@ export function useControlador() {
     escanear, conectarDispositivo, iniciarVisual, detenerVisual,
     abrirVisualFull, cerrarVisualFull, setAjuste,
     toggleAmbilight, cargarMonitores, setAmbilight,
+    iniciarAmbiente, cambiarEfectoAmbiente, detenerAmbiente, toggleEfectoAmbiente,
     timerIniciar, timerPausar, timerReanudar, timerDetener, timerVisual,
     setCerrarComportamiento, setFondoTipo, setFondoColor,
   })
