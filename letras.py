@@ -20,6 +20,10 @@ _API_SEARCH = "https://lrclib.net/api/search"
 _UA = "LLeD (https://github.com/Moren0k/LLeD)"
 _RE_MARCA = re.compile(r"\[(\d+):(\d+(?:\.\d+)?)\]")
 
+# Caché de sesión por canción para no volver a descargar en repeticiones.
+_CACHE: dict = {}
+_CACHE_MAX = 64
+
 
 def _parsear_lrc(texto: str) -> Optional[list[tuple[float, str]]]:
     """Convierte una letra en formato LRC a ``[(segundos, texto), ...]``."""
@@ -41,14 +45,26 @@ def obtener_letra_sincronizada(
     titulo: str,
     album: str = "",
     duracion_seg: int = 0,
-    timeout: float = 6.0,
+    timeout: float = 5.0,
 ) -> Optional[list[tuple[float, str]]]:
     """Busca la letra sincronizada de una canción. Devuelve ``[(t, texto)]`` o None.
 
     Bloqueante: debe llamarse dentro de un executor, no en el event loop.
+    Cachea el resultado por canción (incluido "sin letra") durante la sesión.
     """
     if not titulo:
         return None
+    clave = (artista or "", titulo, album or "", int(duracion_seg))
+    if clave in _CACHE:
+        return _CACHE[clave]
+    resultado = _buscar_lrclib(artista, titulo, album, duracion_seg, timeout)
+    if len(_CACHE) >= _CACHE_MAX:
+        _CACHE.clear()
+    _CACHE[clave] = resultado
+    return resultado
+
+
+def _buscar_lrclib(artista, titulo, album, duracion_seg, timeout):
     cabeceras = {"User-Agent": _UA}
 
     # 1) Coincidencia exacta (artista + título + duración).

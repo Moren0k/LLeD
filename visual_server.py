@@ -293,22 +293,27 @@ _HTML = """<!doctype html>
     box-shadow:0 8px 24px rgba(0,0,0,.45)}
   .t-portada.ver{display:block}
   .tarjeta.oculto{opacity:0}
-  .letra{position:fixed;left:50%;top:68%;width:0;height:0;pointer-events:none;
-    font-family:-apple-system,Segoe UI,sans-serif;transition:opacity .3s}
+  .letra{position:fixed;left:50%;top:68%;transform:translate(-50%,-50%);width:min(92vw,900px);
+    display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;
+    pointer-events:none;font-family:-apple-system,Segoe UI,sans-serif;transition:opacity .3s}
   .letra.oculto{opacity:0}
-  .letra-linea{position:absolute;left:0;top:0;width:min(92vw,900px);text-align:center;line-height:1.25;
-    transform:translate(-50%,-50%);
-    transition:transform .55s cubic-bezier(.22,.61,.36,1),opacity .5s ease,font-size .5s ease;
-    will-change:transform,opacity}
+  .letra-linea{line-height:1.25;max-width:100%;transition:opacity .5s ease,transform .5s ease}
   .letra-linea.act{color:#fff;font-weight:800;
     font-size:calc(clamp(24px,5.2vw,52px)*var(--esc,1));text-shadow:0 2px 18px rgba(0,0,0,.6)}
-  .letra-linea:not(.act){color:rgba(255,255,255,.42);font-weight:600;
+  .letra-linea:not(.act){color:rgba(255,255,255,.5);font-weight:600;
     font-size:calc(clamp(16px,3.4vw,30px)*var(--esc,1))}
+  .letra-linea.saliendo{opacity:0;transform:translateY(-12px)}
+  .letra-linea.entrando{opacity:0;transform:translateY(12px)}
+  .letra-linea.vacia{display:none}
 </style>
 </head>
 <body>
   <canvas id="cv"></canvas>
-  <div class="letra oculto" id="letra"></div>
+  <div class="letra oculto" id="letra">
+    <div class="letra-linea ant vacia" id="letraAnt"></div>
+    <div class="letra-linea act vacia" id="letraAct"></div>
+    <div class="letra-linea sig vacia" id="letraSig"></div>
+  </div>
   <div class="tarjeta oculto" id="tarjeta">
     <img class="t-portada" id="tportada" alt="">
     <div class="t-nombre" id="tnombre"></div>
@@ -320,6 +325,9 @@ _HTML = """<!doctype html>
 (function(){
   var estado=document.getElementById('estado');
   var letra=document.getElementById('letra');
+  var letraAnt=document.getElementById('letraAnt');
+  var letraAct=document.getElementById('letraAct');
+  var letraSig=document.getElementById('letraSig');
   var tarjeta=document.getElementById('tarjeta');
   var tnombre=document.getElementById('tnombre');
   var tartista=document.getElementById('tartista');
@@ -364,59 +372,32 @@ _HTML = """<!doctype html>
     tarjeta.style.top=((y!=null?y:0.85)*100)+'%';
     refrescarTarjeta();
   }
-  // Carrusel de letra: 3 líneas (pasada arriba, actual al medio, próxima abajo)
-  // que se desplazan hacia arriba en cada cambio, con desvanecido.
-  var letraSlots={}, letraIdx=-1, letraEsc=1;
-  function letraPos(off){ return 'translate(-50%, calc(-50% + '+(off*64*letraEsc)+'px))'; }
+  // Letra: 3 líneas (pasada / actual / próxima). Cada línea se desvanece de
+  // abajo hacia arriba al cambiar (sin desplazamiento).
   function aplicarLetraCfg(x,y,escala){
     letra.style.left=((x!=null?x:0.5)*100)+'%';
     letra.style.top=((y!=null?y:0.68)*100)+'%';
-    letraEsc=escala||1;
-    letra.style.setProperty('--esc',letraEsc);
-    posicionarLetras();
+    letra.style.setProperty('--esc',escala||1);
+  }
+  function cambiarSlot(el, nuevo){
+    nuevo = nuevo||'';
+    if(el.textContent === nuevo){ el.classList.toggle('vacia', !nuevo); return; }
+    el.classList.add('saliendo');
+    setTimeout(function(){
+      el.textContent = nuevo;
+      el.classList.toggle('vacia', !nuevo);
+      el.classList.remove('saliendo');
+      el.classList.add('entrando');
+      void el.offsetWidth; // reflow para animar la entrada desde abajo
+      el.classList.remove('entrando');
+    }, 280);
   }
   function aplicarLetra(idx,ant,act,sig){
-    idx=(idx==null?-1:idx);
-    var deseadas={};
-    if(idx>=0 && act){
-      if(ant) deseadas[idx-1]=ant;
-      deseadas[idx]=act;
-      if(sig) deseadas[idx+1]=sig;
-    }
-    Object.keys(deseadas).forEach(function(k){
-      if(!letraSlots[k]){
-        var el=document.createElement('div');
-        el.className='letra-linea';
-        el.textContent=deseadas[k];
-        el.style.opacity='0';
-        el.style.transform=letraPos((parseInt(k)-idx)+0.7); // entra desde abajo
-        letra.appendChild(el);
-        letraSlots[k]=el;
-      } else {
-        letraSlots[k].textContent=deseadas[k];
-      }
-    });
-    letraIdx=idx;
-    void letra.offsetWidth; // fuerza reflow para animar a los recién creados
-    posicionarLetras();
-    letra.classList.toggle('oculto', !(idx>=0 && act));
-  }
-  function posicionarLetras(){
-    Object.keys(letraSlots).forEach(function(k){
-      var i=parseInt(k), el=letraSlots[k], off=i-letraIdx;
-      if(letraIdx<0 || Math.abs(off)>1){
-        el.style.opacity='0';
-        el.style.transform=letraPos(off);
-        setTimeout(function(){
-          var o=i-letraIdx;
-          if(letraSlots[k]===el && (letraIdx<0 || Math.abs(o)>1)){ el.remove(); delete letraSlots[k]; }
-        },600);
-      } else {
-        el.classList.toggle('act', off===0);
-        el.style.opacity = off===0 ? '1' : '.42';
-        el.style.transform=letraPos(off);
-      }
-    });
+    var vacio = !((idx==null?-1:idx)>=0 && act);
+    cambiarSlot(letraAnt, ant);
+    cambiarSlot(letraAct, act);
+    cambiarSlot(letraSig, sig);
+    letra.classList.toggle('oculto', vacio);
   }
   function marcaEstado(txt){
     estado.textContent=txt; estado.classList.remove('oculto');

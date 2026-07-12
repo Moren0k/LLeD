@@ -129,6 +129,10 @@ class EstadoLED:
         self.cancion_nombre: str = ""
         self.cancion_artista: str = ""
         self.cancion_portada: str = ""
+        # Sondeo de reproducción compartido (evita que el bucle de color y el de
+        # letra llamen a Spotify por separado).
+        self.repro_cache: Optional[dict] = None
+        self.repro_wall: float = 0.0
         self.tarea_pulso: Optional[asyncio.Task] = None
 
     def set_base(self, r: int, g: int, b: int) -> None:
@@ -346,7 +350,7 @@ async def manejar_cliente(websocket):
 
         # Restaura la letra si el usuario la había dejado activada.
         if ajustes.get("visual_letra"):
-            tarea_letra = asyncio.create_task(_bucle_letra(websocket, spotify))
+            tarea_letra = asyncio.create_task(_bucle_letra(websocket, spotify, estado))
 
         async for mensaje in websocket:
             datos = json.loads(mensaje)
@@ -614,7 +618,7 @@ async def manejar_cliente(websocket):
             elif comando == "letra_iniciar":
                 if tarea_letra:
                     tarea_letra.cancel()
-                tarea_letra = asyncio.create_task(_bucle_letra(websocket, spotify))
+                tarea_letra = asyncio.create_task(_bucle_letra(websocket, spotify, estado))
                 await websocket.send(json.dumps({"ok": True, "evento": "letra_iniciada"}))
 
             elif comando == "letra_detener":
@@ -1050,7 +1054,25 @@ async def _bucle_ambiente(websocket, estado: EstadoLED, motor, obtener_efecto):
         pass
 
 
-async def _bucle_letra(websocket, spotify):
+async def _sondear_repro(spotify, estado: EstadoLED, max_edad: float = 0.9):
+    """Sondea la reproducción actual reusando un resultado reciente compartido.
+
+    Lo usa el bucle de letra: si el bucle de color sondeó hace poco (publica en
+    ``estado.repro_cache``), reutiliza ese dato en vez de llamar a Spotify otra
+    vez. Así la letra no agrega llamadas a la API cuando el color está activo, y
+    sigue sondeando por su cuenta (~1s) cuando el color está apagado. NO frena al
+    bucle de color, que sondea directo a su propio ritmo.
+    """
+    ahora = time.time()
+    if estado.repro_cache is not None and (ahora - estado.repro_wall) < max_edad:
+        return estado.repro_cache
+    cancion = await spotify.obtener_cancion_actual()
+    estado.repro_cache = cancion
+    estado.repro_wall = time.time()
+    return cancion
+
+
+async def _bucle_letra(websocket, spotify, estado: EstadoLED):
     """Muestra la letra sincronizada de la canción de Spotify en tiempo real.
 
     Sondea la reproducción cada ~1s (pista + progreso), interpola el tiempo entre
@@ -1070,7 +1092,7 @@ async def _bucle_letra(websocket, spotify):
             ahora = time.time()
             if ahora - ultimo_sondeo >= 1.0:
                 ultimo_sondeo = ahora
-                cancion = await spotify.obtener_cancion_actual()
+                cancion = await _sondear_repro(spotify, estado)
                 if cancion:
                     if cancion["cancion_id"] != cancion_id:
                         cancion_id = cancion["cancion_id"]
@@ -1091,7 +1113,7 @@ async def _bucle_letra(websocket, spotify):
                             "ok": True, "evento": "letra_estado", "tiene": bool(lineas)
                         })
                     prog_base = cancion.get("progress_ms", 0) / 1000.0
-                    wall_base = ahora
+                    wall_base = estado.repro_wall  # instante real del sondeo (comp. caché)
                     reproduciendo = cancion.get("reproduciendo", True)
                 elif cancion_id is not None:
                     cancion_id, lineas, ultimo_idx = None, None, -2
@@ -1310,7 +1332,11 @@ async def bucle_sincronizacion(websocket, estado: EstadoLED, spotify, cache, aju
         while True:
             spotify.refrescar_token()
 
+            # El bucle de color sondea a su ritmo (rápido) y publica el resultado
+            # para que el bucle de letra lo reuse sin añadir llamadas a Spotify.
             cancion = await spotify.obtener_cancion_actual()
+            estado.repro_cache = cancion
+            estado.repro_wall = time.time()
             if cancion and cancion["cancion_id"] != cancion_anterior_id:
                 cancion_anterior_id = cancion["cancion_id"]
                 estado.cancion_actual_id = cancion["cancion_id"]
