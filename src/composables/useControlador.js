@@ -231,6 +231,11 @@ export function useControlador() {
   function apagar() { enviar('apagar') }
   function probar() { enviar('probar') }
   function arcoiris() { enviar('arcoiris', { pasos: 12, demora: 0.8 }) }
+  let debounceTemp = null
+  function aplicarTemperatura(calidez) {
+    clearTimeout(debounceTemp)
+    debounceTemp = setTimeout(() => enviar('temperatura', { calidez }), 60)
+  }
 
   // ── Acciones Spotify ──
   function iniciarSesionSpotify() {
@@ -605,7 +610,7 @@ export function useControlador() {
     modosDeteccion, coloresFlash, slidersTransicion,
     coloresAlerta, accionesAlerta, visualesTimer, fondosCard,
     // acciones
-    aplicarColor, aplicarBrillo, togglePower, encender, apagar, probar, arcoiris,
+    aplicarColor, aplicarBrillo, togglePower, encender, apagar, probar, arcoiris, aplicarTemperatura,
     iniciarSesionSpotify, cerrarSesionSpotify, iniciarSincronizacion, detenerSincronizacion,
     cambiarModoSync, pedirEstadoSpotify,
     toggleRitmo, cambiarFlashColor, flashColorCancion, toggleFlashOnly, cambiarModoDeteccion,

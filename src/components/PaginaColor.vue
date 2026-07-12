@@ -46,15 +46,32 @@
         <button class="btn btn-glass" @click="ctrl.arcoiris">Arcoíris</button>
       </div>
     </div>
+
+    <div class="glass card">
+      <div class="fila-titulo">
+        <span class="sub">Blanco cálido / frío</span>
+        <AyudaInfo>Luz blanca ajustable, de cálida (amarillenta) a fría (azulada). Reemplaza el color actual hasta que elijas otro color de la paleta.</AyudaInfo>
+      </div>
+      <div class="fila">
+        <span class="field-label">Temperatura</span>
+        <input class="slider temp" type="range" min="0" max="100"
+          v-model.number="temp" @input="ctrl.aplicarTemperatura(temp)" />
+      </div>
+      <div class="temp-labels">
+        <span>Frío</span>
+        <span>Cálido</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { inject } from 'vue'
+import { inject, ref } from 'vue'
 import SelectorColor from './SelectorColor.vue'
 import AyudaInfo from './AyudaInfo.vue'
 
 const ctrl = inject('ctrl')
+const temp = ref(50) // 0 = frío, 100 = cálido
 
 const swatches = [
   { nombre: 'Rojo', r: 255, g: 0, b: 0 },
@@ -82,4 +99,9 @@ const swatches = [
 .paleta .swatch { width: 100%; height: auto; aspect-ratio: 1; }
 
 .acciones .btn { flex: 1; min-width: 90px; }
+
+.slider.temp {
+  background: linear-gradient(90deg, #7ab8ff 0%, #ffffff 50%, #ffb457 100%);
+}
+.temp-labels { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--text3); margin-top: -6px; }
 </style>
