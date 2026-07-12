@@ -123,6 +123,7 @@ class EstadoLED:
         self.cancion_actual_id: Optional[str] = None
         self.cancion_nombre: str = ""
         self.cancion_artista: str = ""
+        self.cancion_portada: str = ""
         self.tarea_pulso: Optional[asyncio.Task] = None
 
     def set_base(self, r: int, g: int, b: int) -> None:
@@ -258,6 +259,14 @@ async def manejar_cliente(websocket):
             "titulo_escala": ajustes.get("visual_titulo_escala"),
             "titulo_x": ajustes.get("visual_titulo_x"),
             "titulo_y": ajustes.get("visual_titulo_y"),
+            "portada_tarjeta": ajustes.get("visual_portada"),
+        }
+
+    def cfg_portada():
+        return {
+            "portada_difuminado": ajustes.get("visual_portada_difuminado"),
+            "portada_x": ajustes.get("visual_portada_x"),
+            "portada_y": ajustes.get("visual_portada_y"),
         }
 
     tarea_sincronizacion: Optional[asyncio.Task] = None
@@ -278,7 +287,7 @@ async def manejar_cliente(websocket):
     def _timer_feed_fin():
         # Al completar o detener: oculta el timer y vuelve al visual normal.
         visual_hub.set_timer_estado(False)
-        visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+        visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"), cfg_portada())
 
     def _timer_push_visual():
         # Refleja en el remoto qué visual va durante el timer (Reloj/Tarjeta o
@@ -289,7 +298,7 @@ async def manejar_cliente(websocket):
             visual_hub.set_visual(timer_visual_tipo, False)
         else:
             visual_hub.set_timer_estado(False)
-            visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+            visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"), cfg_portada())
 
     temporizador = TemporizadorTimer(
         websocket, motor, lambda: tira,
@@ -581,7 +590,7 @@ async def manejar_cliente(websocket):
                 visual_hub.set_titulo(cfg_titulo())
                 # No pisar el reloj/tarjeta del timer en el remoto.
                 if not (temporizador.activo and timer_visual_usar):
-                    visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+                    visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"), cfg_portada())
                 await websocket.send(json.dumps({
                     "ok": True, "evento": "ajustes", "ajustes": resultado
                 }))
@@ -591,7 +600,7 @@ async def manejar_cliente(websocket):
                 motor.set_fps(resultado.get("fps_transicion", motor.fps))
                 visual_hub.set_titulo(cfg_titulo())
                 if not (temporizador.activo and timer_visual_usar):
-                    visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+                    visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"), cfg_portada())
                 detector_ritmo.set_sensibilidad_impacto(ajustes.get("ambilight_sensibilidad_audio"))
                 capturador.configurar(
                     fps=ajustes.get("ambilight_fps"),
@@ -710,9 +719,9 @@ async def manejar_cliente(websocket):
                 visual_hub.set_color(estado.r_base, estado.g_base, estado.b_base)
                 visual_hub.set_ritmo(ritmo_activado)
                 visual_hub.set_titulo(cfg_titulo())
-                visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+                visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"), cfg_portada())
                 if estado.cancion_actual_id:
-                    visual_hub.set_cancion(estado.cancion_nombre, estado.cancion_artista)
+                    visual_hub.set_cancion(estado.cancion_nombre, estado.cancion_artista, estado.cancion_portada)
                 await websocket.send(json.dumps({
                     "ok": True, "evento": "visual", **info
                 }))
@@ -1089,6 +1098,7 @@ async def bucle_sincronizacion(websocket, estado: EstadoLED, spotify, cache, aju
                 estado.cancion_actual_id = cancion["cancion_id"]
                 estado.cancion_nombre = cancion.get("nombre", "")
                 estado.cancion_artista = cancion.get("artista", "")
+                estado.cancion_portada = cancion.get("url_portada", "")
                 modo = obtener_modo()
                 gradiente = ajustes.es_gradiente
 
@@ -1157,7 +1167,8 @@ async def bucle_sincronizacion(websocket, estado: EstadoLED, spotify, cache, aju
 
 
 async def _notificar_color(websocket, cancion, r, g, b, fuente):
-    visual_hub.set_cancion(cancion.get("nombre", ""), cancion.get("artista", ""))
+    visual_hub.set_cancion(cancion.get("nombre", ""), cancion.get("artista", ""),
+                           cancion.get("url_portada", ""))
     await _enviar_json(websocket, {
         "ok": True, "evento": "spotify_color",
         "r": r, "g": g, "b": b,

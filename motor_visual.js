@@ -21,6 +21,7 @@
       tipo: 'aurora', movimiento: true, ritmo: false,
       timerProgreso: 0, timerRestante: 0,
       timerFondoColor: { r: 10, g: 10, b: 30 },
+      portadaDifuminado: true, portadaX: 0.5, portadaY: 0.42,
     };
     Object.assign(estado, opciones || {});
 
@@ -31,6 +32,8 @@
     var orbes = [], ondasFase = [];
     // Estado de la animación split-flap (por dígito visible).
     var flapShown = null, flapFrom = [], flapT = [];
+    // Carátula del álbum (visual "portada").
+    var portadaUrl = '', portadaImg = null, portadaListo = false;
 
     function c1(a) { return 'rgba(' + estado.r + ',' + estado.g + ',' + estado.b + ',' + a + ')'; }
     function c2(a) {
@@ -384,6 +387,56 @@
       ctx.fill();
     }
 
+    // ── Carátula del álbum ───────────────────────────────────────
+    function drawPortada(dt) {
+      fondo();
+      if (!portadaImg || !portadaListo) return; // sin carátula: fondo oscuro
+      var iw = portadaImg.naturalWidth || portadaImg.width;
+      var ih = portadaImg.naturalHeight || portadaImg.height;
+      if (!iw || !ih) return;
+
+      // Fondo difuminado tipo "reproduciendo ahora".
+      if (estado.portadaDifuminado) {
+        var esc = Math.max(W / iw, H / ih);
+        var dw = iw * esc, dh = ih * esc;
+        ctx.save();
+        ctx.filter = 'blur(' + Math.round(Math.min(W, H) * 0.06) + 'px)';
+        ctx.drawImage(portadaImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        ctx.restore();
+        ctx.fillStyle = 'rgba(0,0,0,0.42)';
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // Carátula nítida en un cuadro posicionado (con leve latido al beat).
+      var lado = Math.min(W, H) * 0.55 * (1 + 0.03 * pulso);
+      var cx = estado.portadaX * W, cy = estado.portadaY * H;
+      cx = Math.max(lado / 2 + 8, Math.min(W - lado / 2 - 8, cx));
+      cy = Math.max(lado / 2 + 8, Math.min(H - lado / 2 - 8, cy));
+      var px = cx - lado / 2, py = cy - lado / 2, rad = lado * 0.06;
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = lado * 0.09;
+      ctx.shadowOffsetY = lado * 0.02;
+      roundRect(ctx, px, py, lado, lado, rad);
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      roundRect(ctx, px, py, lado, lado, rad);
+      ctx.clip();
+      var s2 = Math.min(lado / iw, lado / ih);
+      var dw2 = iw * s2, dh2 = ih * s2;
+      ctx.drawImage(portadaImg, px + (lado - dw2) / 2, py + (lado - dh2) / 2, dw2, dh2);
+      ctx.restore();
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1;
+      roundRect(ctx, px, py, lado, lado, rad);
+      ctx.stroke();
+    }
+
     function frame(ms) {
       if (!ultimo) ultimo = ms;
       var dt = Math.min(0.05, (ms - ultimo) / 1000);
@@ -395,6 +448,7 @@
       else if (estado.tipo === 'ondas') drawOndas(dt);
       else if (estado.tipo === 'splitflap') drawSplitFlap(dt);
       else if (estado.tipo === 'colorcard') drawColorCard(dt);
+      else if (estado.tipo === 'portada') drawPortada(dt);
       else drawAurora(dt);
 
       raf = requestAnimationFrame(frame);
@@ -418,6 +472,22 @@
         estado.timerFondoColor.r = r;
         estado.timerFondoColor.g = g;
         estado.timerFondoColor.b = b;
+      },
+      setPortada: function (url) {
+        url = url || '';
+        if (url === portadaUrl) return;
+        portadaUrl = url;
+        portadaListo = false;
+        if (!url) { portadaImg = null; return; }
+        var img = new Image();
+        img.onload = function () { if (portadaUrl === url) { portadaImg = img; portadaListo = true; } };
+        img.onerror = function () { if (portadaUrl === url) { portadaImg = null; portadaListo = false; } };
+        img.src = url; // sin crossOrigin: solo se dibuja, nunca se lee
+      },
+      setPortadaCfg: function (difuminado, x, y) {
+        estado.portadaDifuminado = !!difuminado;
+        if (x != null) estado.portadaX = x;
+        if (y != null) estado.portadaY = y;
       },
       destruir: function () {
         if (raf) cancelAnimationFrame(raf);

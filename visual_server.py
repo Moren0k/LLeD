@@ -81,9 +81,12 @@ class VisualHub:
         self._clientes: set = set()
         self.estado = {
             "r": 0, "g": 0, "b": 0, "ritmo": False,
-            "cancion": "", "artista": "",
+            "cancion": "", "artista": "", "portada": "",
             "titulo": True, "titulo_escala": 1.0, "titulo_x": 0.5, "titulo_y": 0.85,
             "tipo": "aurora", "movimiento": True,
+            # Carátula del álbum como visual.
+            "portada_tarjeta": False, "portada_difuminado": True,
+            "portada_x": 0.5, "portada_y": 0.42,
             # Estado del timer (para el reloj flip / tarjeta en el remoto).
             "timer_on": False, "timer_progreso": 0.0, "timer_restante": 0.0,
             "timer_fondo_r": 10, "timer_fondo_g": 10, "timer_fondo_b": 30,
@@ -175,27 +178,42 @@ class VisualHub:
     def pulse(self, energia: float) -> None:
         self._emitir({"t": "beat", "e": round(float(energia), 3)})
 
-    def set_cancion(self, nombre: str, artista: str = "") -> None:
+    def set_cancion(self, nombre: str, artista: str = "", portada: str = "") -> None:
         self.estado["cancion"] = nombre or ""
         self.estado["artista"] = artista or ""
-        self._emitir({"t": "cancion", "nombre": nombre or "", "artista": artista or ""})
+        self.estado["portada"] = portada or ""
+        self._emitir({
+            "t": "cancion", "nombre": nombre or "", "artista": artista or "",
+            "portada": portada or "",
+        })
 
-    def set_visual(self, tipo: str, movimiento: bool) -> None:
+    def set_visual(self, tipo: str, movimiento: bool, portada: dict | None = None) -> None:
         self.estado["tipo"] = tipo
         self.estado["movimiento"] = bool(movimiento)
-        self._emitir({"t": "visual", "tipo": tipo, "movimiento": bool(movimiento)})
+        if portada:
+            for k in ("portada_difuminado", "portada_x", "portada_y"):
+                if k in portada:
+                    self.estado[k] = portada[k]
+        self._emitir({
+            "t": "visual", "tipo": tipo, "movimiento": bool(movimiento),
+            "pd": self.estado["portada_difuminado"],
+            "px": self.estado["portada_x"], "py": self.estado["portada_y"],
+        })
 
     def set_titulo(self, cfg: dict) -> None:
-        """cfg: {titulo, titulo_escala, titulo_x, titulo_y}."""
+        """cfg: {titulo, titulo_escala, titulo_x, titulo_y, portada_tarjeta}."""
         for k in ("titulo", "titulo_escala", "titulo_x", "titulo_y"):
             if k in cfg:
                 self.estado[k] = cfg[k]
+        if "portada_tarjeta" in cfg:
+            self.estado["portada_tarjeta"] = bool(cfg["portada_tarjeta"])
         self._emitir({
             "t": "titulo",
             "on": self.estado["titulo"],
             "escala": self.estado["titulo_escala"],
             "x": self.estado["titulo_x"],
             "y": self.estado["titulo_y"],
+            "portada_tarjeta": self.estado["portada_tarjeta"],
         })
 
     # ── Timer (reloj flip / tarjeta en el remoto) ─────────────────
@@ -251,12 +269,17 @@ _HTML = """<!doctype html>
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:84vw}
   .t-artista{color:rgba(255,255,255,.62);font-weight:500;margin-top:4px;
     font-size:calc(clamp(13px,3vw,20px) * var(--esc,1))}
+  .t-portada{width:calc(clamp(64px,18vw,150px) * var(--esc,1));height:calc(clamp(64px,18vw,150px) * var(--esc,1));
+    border-radius:16px;object-fit:cover;margin:0 auto 12px;display:none;
+    box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  .t-portada.ver{display:block}
   .tarjeta.oculto{opacity:0}
 </style>
 </head>
 <body>
   <canvas id="cv"></canvas>
   <div class="tarjeta oculto" id="tarjeta">
+    <img class="t-portada" id="tportada" alt="">
     <div class="t-nombre" id="tnombre"></div>
     <div class="t-artista" id="tartista"></div>
   </div>
@@ -268,8 +291,9 @@ _HTML = """<!doctype html>
   var tarjeta=document.getElementById('tarjeta');
   var tnombre=document.getElementById('tnombre');
   var tartista=document.getElementById('tartista');
+  var tportada=document.getElementById('tportada');
   var ocultarT=null, mostrarTitulo=true;
-  var cancionNombre='', cancionArtista='';
+  var cancionNombre='', cancionArtista='', cancionPortada='', portadaTarjeta=false;
   var timerOn=false, timerRestante=0;
   var vis=window.CrearVisual(document.getElementById('cv'),{});
 
@@ -279,12 +303,14 @@ _HTML = """<!doctype html>
     var mm=(m<10?'0':'')+m, ss=(s<10?'0':'')+s;
     return h>0 ? h+':'+mm+':'+ss : mm+':'+ss;
   }
-  function aplicarCancion(nombre,artista){
+  function aplicarCancion(nombre,artista,portada){
     cancionNombre=nombre||''; cancionArtista=artista||'';
+    if(portada!==undefined){ cancionPortada=portada||''; if(vis.setPortada) vis.setPortada(cancionPortada); }
     refrescarTarjeta();
   }
   function refrescarTarjeta(){
     if(timerOn){
+      tportada.classList.remove('ver');
       tnombre.textContent='TIMER';
       tartista.textContent=fmtTiempo(timerRestante)+' restantes';
       tarjeta.classList.toggle('oculto',!mostrarTitulo);
@@ -292,11 +318,15 @@ _HTML = """<!doctype html>
     }
     tnombre.textContent=cancionNombre;
     tartista.textContent=cancionArtista;
-    var hay=cancionNombre.length>0;
+    var verPortada=portadaTarjeta && cancionPortada.length>0;
+    if(verPortada && tportada.getAttribute('src')!==cancionPortada) tportada.setAttribute('src',cancionPortada);
+    tportada.classList.toggle('ver',verPortada);
+    var hay=cancionNombre.length>0 || verPortada;
     tarjeta.classList.toggle('oculto',!(mostrarTitulo&&hay));
   }
-  function aplicarTitulo(on,esc,x,y){
+  function aplicarTitulo(on,esc,x,y,pt){
     mostrarTitulo=!!on;
+    if(pt!==undefined) portadaTarjeta=!!pt;
     tarjeta.style.setProperty('--esc',esc||1);
     tarjeta.style.left=((x!=null?x:0.5)*100)+'%';
     tarjeta.style.top=((y!=null?y:0.85)*100)+'%';
@@ -317,20 +347,21 @@ _HTML = """<!doctype html>
       if(d.t==='color'){vis.setColor(d.r,d.g,d.b)}
       else if(d.t==='beat'){vis.beat(d.e)}
       else if(d.t==='ritmo'){vis.setRitmo(d.on)}
-      else if(d.t==='visual'){vis.setTipo(d.tipo);vis.setMovimiento(d.movimiento)}
-      else if(d.t==='cancion'){aplicarCancion(d.nombre,d.artista)}
-      else if(d.t==='titulo'){aplicarTitulo(d.on,d.escala,d.x,d.y)}
+      else if(d.t==='visual'){vis.setTipo(d.tipo);vis.setMovimiento(d.movimiento);if(vis.setPortadaCfg)vis.setPortadaCfg(d.pd,d.px,d.py)}
+      else if(d.t==='cancion'){aplicarCancion(d.nombre,d.artista,d.portada)}
+      else if(d.t==='titulo'){aplicarTitulo(d.on,d.escala,d.x,d.y,d.portada_tarjeta)}
       else if(d.t==='timer_estado'){timerOn=!!d.on;refrescarTarjeta()}
       else if(d.t==='timer_tick'){timerRestante=d.restante;vis.setTimerProgreso(d.p,d.restante);if(timerOn)refrescarTarjeta()}
       else if(d.t==='timer_fondo'){vis.setTimerFondoColor(d.r,d.g,d.b)}
       else if(d.t==='estado'){
         vis.setColor(d.r,d.g,d.b);vis.setRitmo(d.ritmo);
         vis.setTipo(d.tipo);vis.setMovimiento(d.movimiento);
+        if(vis.setPortadaCfg)vis.setPortadaCfg(d.portada_difuminado,d.portada_x,d.portada_y);
         vis.setTimerFondoColor(d.timer_fondo_r,d.timer_fondo_g,d.timer_fondo_b);
         vis.setTimerProgreso(d.timer_progreso,d.timer_restante);
         timerRestante=d.timer_restante; timerOn=!!d.timer_on;
-        aplicarTitulo(d.titulo,d.titulo_escala,d.titulo_x,d.titulo_y);
-        aplicarCancion(d.cancion,d.artista);
+        aplicarTitulo(d.titulo,d.titulo_escala,d.titulo_x,d.titulo_y,d.portada_tarjeta);
+        aplicarCancion(d.cancion,d.artista,d.portada);
       }
     };
   }

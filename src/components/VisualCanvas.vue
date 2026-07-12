@@ -35,10 +35,23 @@ onMounted(() => {
     )
   }
 
+  // Carátula del álbum (visual "portada").
+  function alimentarPortadaCfg() {
+    if (vis) vis.setPortadaCfg(
+      ctrl.ajustes.visual_portada_difuminado,
+      ctrl.ajustes.visual_portada_x,
+      ctrl.ajustes.visual_portada_y,
+    )
+  }
+  vis.setPortada(ctrl.portadaActual)
+  alimentarPortadaCfg()
+
   watch(() => ({ ...ctrl.colorFondo }), (c) => vis && vis.setColor(c.r, c.g, c.b), { deep: true })
   watch(() => ctrl.ajustes.visual_movimiento, (v) => vis && vis.setMovimiento(v))
   watch(() => ctrl.ritmoActivado, (v) => vis && vis.setRitmo(v))
   watch(() => ctrl.beatTick, () => vis && vis.beat(ctrl.beatEnergia))
+  watch(() => ctrl.portadaActual, (url) => vis && vis.setPortada(url))
+  watch(() => [ctrl.ajustes.visual_portada_difuminado, ctrl.ajustes.visual_portada_x, ctrl.ajustes.visual_portada_y], alimentarPortadaCfg)
 
   // Un único punto de verdad para el tipo mostrado.
   watch(tipoEfectivo, (t) => {

@@ -3,7 +3,7 @@
     <VisualCanvas class="full-canvas" />
 
     <div
-      v-if="ctrl.ajustes.visual_titulo && (ctrl.cancionActual || ctrl.timer.activo)"
+      v-if="mostrarTarjeta"
       class="tarjeta"
       :style="estiloTarjeta"
       @pointerdown="iniciarArrastre"
@@ -13,8 +13,11 @@
         <div class="t-artista">{{ tFocus }} restantes</div>
       </template>
       <template v-else>
-        <div class="t-nombre">{{ ctrl.cancionActual }}</div>
-        <div class="t-artista">{{ ctrl.artistaActual }}</div>
+        <img v-if="ctrl.ajustes.visual_portada && ctrl.portadaActual" class="t-portada" :src="ctrl.portadaActual" alt="" />
+        <template v-if="ctrl.ajustes.visual_titulo">
+          <div class="t-nombre">{{ ctrl.cancionActual }}</div>
+          <div class="t-artista">{{ ctrl.artistaActual }}</div>
+        </template>
       </template>
     </div>
 
@@ -34,6 +37,13 @@ const tFocus = computed(() => {
   const m = Math.floor(Math.max(0, t) / 60)
   const s = Math.floor(Math.max(0, t) % 60)
   return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s
+})
+
+const mostrarTarjeta = computed(() => {
+  if (ctrl.timer.activo) return ctrl.ajustes.visual_titulo
+  const verNombre = ctrl.ajustes.visual_titulo && !!ctrl.cancionActual
+  const verPortada = ctrl.ajustes.visual_portada && !!ctrl.portadaActual
+  return verNombre || verPortada
 })
 
 const estiloTarjeta = computed(() => ({
@@ -107,6 +117,7 @@ onUnmounted(() => {
   user-select: none;
 }
 .tarjeta:active { cursor: grabbing; }
+.t-portada { width: calc(140px * var(--esc, 1)); height: calc(140px * var(--esc, 1)); border-radius: 16px; object-fit: cover; display: block; margin: 0 auto 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); }
 .t-nombre { color: #fff; font-weight: 700; font-size: calc(30px * var(--esc, 1)); line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 80vw; }
 .t-artista { color: rgba(255, 255, 255, 0.62); font-weight: 500; font-size: calc(17px * var(--esc, 1)); margin-top: 4px; }
 
