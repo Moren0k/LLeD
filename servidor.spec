@@ -12,27 +12,20 @@ from PyInstaller.utils.hooks import (
 )
 
 hiddenimports = []
-for paquete in ("sklearn", "scipy", "numpy", "spotipy", "bleak",
+for paquete in ("numpy", "spotipy", "bleak",
                 "bleak.backends.winrt", "winrt"):
     hiddenimports += collect_submodules(paquete)
 hiddenimports += collect_submodules("mss")
 hiddenimports += [
     "pyaudiowpatch",
     "websockets",
-    "joblib",
-    "sklearn.utils._typedefs",
-    "sklearn.neighbors._partition_nodes",
-    "sklearn.tree._utils",
-    "sklearn.utils._cython_blas",
 ]
 
 datas = [("motor_visual.js", ".")]
-datas += collect_data_files("sklearn")
-datas += collect_data_files("scipy")
 datas += collect_data_files("certifi")
 
 binaries = []
-for paquete in ("scipy", "numpy", "sklearn", "pyaudiowpatch"):
+for paquete in ("numpy", "pyaudiowpatch"):
     binaries += collect_dynamic_libs(paquete)
 
 a = Analysis(

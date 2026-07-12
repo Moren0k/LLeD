@@ -15,10 +15,10 @@
       <div class="preview">
         <VisualCanvas class="preview-canvas" />
         <div
-          v-if="ctrl.ajustes.visual_titulo && ctrl.cancionActual"
+          v-if="ctrl.ajustes.visual_titulo && (ctrl.cancionActual || ctrl.timer.activo)"
           class="prev-tarjeta"
           :style="{ left: ctrl.ajustes.visual_titulo_x * 100 + '%', top: ctrl.ajustes.visual_titulo_y * 100 + '%' }"
-        >{{ ctrl.cancionActual }}</div>
+        >{{ ctrl.timer.activo ? 'TIMER' : ctrl.cancionActual }}</div>
       </div>
       <button class="btn btn-tint full" @click="ctrl.abrirVisualFull">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
@@ -32,17 +32,35 @@
         <span class="sub">Estilo</span>
         <AyudaInfo>Elegí cómo se ve el fondo. <b>Aurora</b>: nubes de luz suaves. <b>Orbes</b>: bolitas que se mueven por la pantalla. <b>Ondas</b>: ondas que recorren de lado a lado.</AyudaInfo>
       </div>
+
+      <div v-if="ctrl.timer.activo" class="timer-hint">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Timer activo: elegí <b>Reloj</b> o <b>Tarjeta</b>, o dejá un visual normal.
+      </div>
+
       <div class="estilos">
         <button
           v-for="v in visuales"
           :key="v.id"
           class="estilo"
-          :class="{ activo: ctrl.ajustes.visual_tipo === v.id }"
-          @click="ctrl.setAjuste('visual_tipo', v.id, true)"
+          :class="{ activo: baseActivo(v.id) }"
+          @click="elegirBase(v.id)"
         >
           <span class="estilo-ico" v-html="v.ico"></span>
           <span class="estilo-lbl">{{ v.label }}</span>
         </button>
+        <template v-if="ctrl.timer.activo">
+          <button
+            v-for="v in ctrl.visualesTimer"
+            :key="v.id"
+            class="estilo estilo-timer"
+            :class="{ activo: timerSel(v.id) }"
+            @click="elegirTimer(v.id)"
+          >
+            <span class="estilo-ico" v-html="v.ico"></span>
+            <span class="estilo-lbl">{{ v.label }}</span>
+          </button>
+        </template>
       </div>
 
       <label class="toggle mov">
@@ -51,6 +69,26 @@
         <span class="toggle-txt">Movimiento por la pantalla</span>
         <AyudaInfo>Con esto los elementos se desplazan por la pantalla. Sin esto, se quedan en su lugar y solo laten con la música.</AyudaInfo>
       </label>
+    </div>
+
+    <!-- Color de la tarjeta (solo con timer + visual Tarjeta) -->
+    <div v-if="mostrarFondoCard" class="glass card">
+      <div class="fila-titulo">
+        <span class="sub">Color de la tarjeta</span>
+        <AyudaInfo>Fondo sólido de la tarjeta del timer. El texto del tiempo se vuelve claro u oscuro automáticamente según el contraste.</AyudaInfo>
+      </div>
+      <div class="swatches">
+        <button
+          v-for="c in ctrl.fondosCard"
+          :key="c.nombre"
+          class="swatch"
+          :class="{ selected: ctrl.timer.colorFondoVisual.r === c.r && ctrl.timer.colorFondoVisual.g === c.g && ctrl.timer.colorFondoVisual.b === c.b }"
+          :style="{ background: `rgb(${c.r},${c.g},${c.b})` }"
+          :title="c.nombre"
+          @click="elegirFondo(c)"
+        ></button>
+      </div>
+      <input class="hex" type="text" maxlength="7" :value="hexFondo" @input="onHexFondo" placeholder="#0a0a1e" />
     </div>
 
     <!-- Título de la canción -->
@@ -113,12 +151,53 @@
 </template>
 
 <script setup>
-import { inject, ref } from 'vue'
+import { inject, ref, computed } from 'vue'
 import VisualCanvas from './VisualCanvas.vue'
 import AyudaInfo from './AyudaInfo.vue'
 
 const ctrl = inject('ctrl')
 const copiado = ref(false)
+
+// ── Selección de visual (base vs. visual del timer) ──
+// El timer solo aporta estado; acá se decide QUÉ se muestra.
+function usandoTimer() { return ctrl.timer.activo && ctrl.timer.usarVisual }
+function baseActivo(id) { return !usandoTimer() && ctrl.ajustes.visual_tipo === id }
+function timerSel(id) { return usandoTimer() && ctrl.timer.modoVisual === id }
+
+function elegirBase(id) {
+  ctrl.setAjuste('visual_tipo', id, true)
+  if (ctrl.timer.activo) { ctrl.timer.usarVisual = false; ctrl.timerVisual() }
+}
+function elegirTimer(id) {
+  ctrl.timer.modoVisual = id
+  ctrl.timer.usarVisual = true
+  ctrl.timerVisual()
+}
+
+const mostrarFondoCard = computed(() =>
+  ctrl.timer.activo && ctrl.timer.usarVisual && ctrl.timer.modoVisual === 'colorcard'
+)
+
+const hexFondo = computed(() => {
+  const { r, g, b } = ctrl.timer.colorFondoVisual
+  return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')
+})
+function onHexFondo(e) {
+  let h = e.target.value.replace(/[^0-9a-fA-F]/g, '')
+  if (h.length >= 6) {
+    h = h.substring(0, 6)
+    ctrl.timer.colorFondoVisual.r = parseInt(h.substring(0, 2), 16)
+    ctrl.timer.colorFondoVisual.g = parseInt(h.substring(2, 4), 16)
+    ctrl.timer.colorFondoVisual.b = parseInt(h.substring(4, 6), 16)
+    ctrl.timerVisual()
+  }
+}
+function elegirFondo(c) {
+  ctrl.timer.colorFondoVisual.r = c.r
+  ctrl.timer.colorFondoVisual.g = c.g
+  ctrl.timer.colorFondoVisual.b = c.b
+  ctrl.timerVisual()
+}
 
 const visuales = [
   { id: 'aurora', label: 'Aurora', ico: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 15c3-6 6-6 9 0s6 6 9 0"/><path d="M3 10c3-6 6-6 9 0s6 6 9 0" opacity=".5"/></svg>' },
@@ -177,6 +256,30 @@ function copiar(texto) {
 .estilo:hover { color: var(--text); border-color: var(--glass-border-strong); }
 .estilo.activo { color: #fff; border-color: transparent; background: linear-gradient(135deg, var(--tint), var(--tint-2)); box-shadow: 0 4px 16px -6px var(--tint); }
 .estilo-lbl { font-size: 0.74rem; font-weight: 600; }
+.estilo-timer { border-style: dashed; }
+.estilo-timer.activo { border-style: solid; }
+
+.timer-hint {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.78rem; color: var(--text2); line-height: 1.4;
+  padding: 8px 12px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04); border: 1px solid var(--glass-border);
+}
+.timer-hint svg { flex-shrink: 0; color: var(--tint); }
+
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.swatch {
+  width: 38px; height: 38px; border-radius: 10px;
+  border: 2px solid transparent; cursor: pointer; transition: all 0.15s; outline: none;
+}
+.swatch:hover { transform: scale(1.1); }
+.swatch.selected { border-color: #fff; box-shadow: 0 0 12px rgba(255,255,255,0.3); }
+.hex {
+  width: 110px; padding: 8px 12px; border-radius: 10px;
+  border: 1px solid var(--glass-border); background: rgba(0,0,0,0.25);
+  color: #fff; font-family: monospace; font-size: 0.9rem; outline: none; transition: border 0.15s;
+}
+.hex:focus { border-color: var(--tint); }
 
 .mov { margin-top: 2px; }
 .toggle-txt { font-size: 0.88rem; }

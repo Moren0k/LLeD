@@ -39,7 +39,6 @@
     }
   },
   "dependencies": {
-    "@ckpack/vue-color": "^1.3.0",
     "vue": "^3.4.0"
   },
   "devDependencies": {

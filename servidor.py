@@ -37,6 +37,7 @@ import websockets
 
 from ajustes import Ajustes
 from ambilight import CapturadorPantalla, listar_monitores
+from timer import TemporizadorTimer
 from audio_ritmo_final import DetectorRitmo
 from cache_colores import CacheColores, FUENTE_AUTO, FUENTE_USUARIO
 from extractor_color import portada_a_rgb
@@ -266,6 +267,35 @@ async def manejar_cliente(websocket):
     ritmo_activado = False
     tarea_ritmo: Optional[asyncio.Task] = None
 
+    # Estado del visual del timer (elegido desde la sección Visuales del front).
+    timer_visual_tipo = "splitflap"
+    timer_visual_usar = True
+    timer_fondo = {"r": 10, "g": 10, "b": 30}
+
+    def _timer_feed_tick(progreso, restante):
+        visual_hub.set_timer_tick(progreso, restante)
+
+    def _timer_feed_fin():
+        # Al completar o detener: oculta el timer y vuelve al visual normal.
+        visual_hub.set_timer_estado(False)
+        visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+
+    def _timer_push_visual():
+        # Refleja en el remoto qué visual va durante el timer (Reloj/Tarjeta o
+        # el visual normal si el usuario lo eligió).
+        visual_hub.set_timer_fondo(timer_fondo["r"], timer_fondo["g"], timer_fondo["b"])
+        if timer_visual_usar:
+            visual_hub.set_timer_estado(True)
+            visual_hub.set_visual(timer_visual_tipo, False)
+        else:
+            visual_hub.set_timer_estado(False)
+            visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+
+    temporizador = TemporizadorTimer(
+        websocket, motor, lambda: tira,
+        on_tick=_timer_feed_tick, on_fin=_timer_feed_fin,
+    )
+
     capturador = CapturadorPantalla()
     ambilight_activado = False
     ambilight_uso_audio = False
@@ -349,14 +379,22 @@ async def manejar_cliente(websocket):
             elif comando == "spotify_login":
                 if not spotify.tiene_credenciales():
                     await websocket.send(json.dumps({
-                        "ok": False,
-                        "error": "Configura spotify_cliente_id y spotify_cliente_secreto en config.json"
+                        "ok": False, "evento": "spotify_error",
+                        "error": "No se pudo iniciar sesión con Spotify. Intentá de nuevo más tarde."
                     }))
                     continue
 
+                # URL de autorización para abrir manualmente si el navegador no
+                # se abre solo (el servidor local igual captura la respuesta).
+                try:
+                    url_login = spotify.obtener_url_auth()
+                except Exception:
+                    url_login = ""
+
                 await websocket.send(json.dumps({
                     "ok": True, "evento": "spotify_esperando",
-                    "mensaje": "Se abrirá el navegador para iniciar sesión con Spotify"
+                    "mensaje": "Abriendo el navegador para iniciar sesión con Spotify…",
+                    "url": url_login,
                 }))
 
                 asyncio.create_task(_auth_spotify_task(websocket, spotify))
@@ -408,7 +446,8 @@ async def manejar_cliente(websocket):
             elif comando == "spotify_iniciar":
                 if not spotify.esta_autenticado():
                     await websocket.send(json.dumps({
-                        "ok": False, "error": "Primero inicia sesión con spotify_login"
+                        "ok": False, "evento": "spotify_error",
+                        "error": "Primero conectá tu cuenta de Spotify."
                     }))
                     continue
 
@@ -457,7 +496,7 @@ async def manejar_cliente(websocket):
                 if not detector_ritmo.disponible:
                     await websocket.send(json.dumps({
                         "ok": False, "evento": "ritmo_error",
-                        "error": "No se encontró dispositivo de audio loopback (Stereo Mix)"
+                        "error": "No se pudo acceder al audio del equipo. Activá la mezcla estéreo en la configuración de sonido de Windows."
                     }))
                     continue
 
@@ -540,7 +579,9 @@ async def manejar_cliente(websocket):
                 resultado = ajustes.actualizar(cambios)
                 motor.set_fps(resultado.get("fps_transicion", motor.fps))
                 visual_hub.set_titulo(cfg_titulo())
-                visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+                # No pisar el reloj/tarjeta del timer en el remoto.
+                if not (temporizador.activo and timer_visual_usar):
+                    visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
                 await websocket.send(json.dumps({
                     "ok": True, "evento": "ajustes", "ajustes": resultado
                 }))
@@ -549,7 +590,8 @@ async def manejar_cliente(websocket):
                 resultado = ajustes.resetear()
                 motor.set_fps(resultado.get("fps_transicion", motor.fps))
                 visual_hub.set_titulo(cfg_titulo())
-                visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
+                if not (temporizador.activo and timer_visual_usar):
+                    visual_hub.set_visual(ajustes.get("visual_tipo"), ajustes.get("visual_movimiento"))
                 detector_ritmo.set_sensibilidad_impacto(ajustes.get("ambilight_sensibilidad_audio"))
                 capturador.configurar(
                     fps=ajustes.get("ambilight_fps"),
@@ -618,17 +660,18 @@ async def manejar_cliente(websocket):
                     await websocket.send(json.dumps({
                         "ok": True, "evento": "dispositivos", "lista": lista
                     }))
-                except Exception as e:
+                except Exception:
                     await websocket.send(json.dumps({
                         "ok": False, "evento": "dispositivos",
-                        "error": f"Error al escanear: {e}", "lista": []
+                        "error": "No se pudo buscar dispositivos. Intentá de nuevo.", "lista": []
                     }))
 
             elif comando == "conectar_dispositivo":
                 nueva_mac = datos.get("direccion")
                 if not nueva_mac:
                     await websocket.send(json.dumps({
-                        "ok": False, "error": "Falta la dirección del dispositivo"
+                        "ok": False, "evento": "dispositivo_conectado",
+                        "error": "No se pudo conectar con el dispositivo. Intentá de nuevo."
                     }))
                     continue
                 try:
@@ -646,11 +689,11 @@ async def manejar_cliente(websocket):
                         "ok": True, "evento": "dispositivo_conectado",
                         "dispositivo": info_dispositivo()
                     }))
-                except Exception as e:
+                except Exception:
                     dispositivo_conectado = False
                     await websocket.send(json.dumps({
                         "ok": False, "evento": "dispositivo_conectado",
-                        "error": f"No se pudo conectar: {e}",
+                        "error": "No se pudo conectar con el dispositivo. Intentá de nuevo.",
                         "dispositivo": info_dispositivo()
                     }))
 
@@ -697,7 +740,7 @@ async def manejar_cliente(websocket):
                 if not capturador.disponible:
                     await websocket.send(json.dumps({
                         "ok": False, "evento": "ambilight_error",
-                        "error": "Captura de pantalla no disponible (mss)"
+                        "error": "La captura de pantalla no está disponible en este equipo."
                     }))
                     continue
                 if not dispositivo_conectado:
@@ -764,6 +807,65 @@ async def manejar_cliente(websocket):
                     "ok": True, "evento": "ajustes", "ajustes": ajustes.to_dict()
                 }))
 
+            # ── Comandos Timer ───────────────────────────────────────
+
+            elif comando == "timer_iniciar":
+                tiempo = int(datos.get("tiempo", 1500))
+                color = datos.get("color", {"r": 255, "g": 0, "b": 0})
+                accion = datos.get("accion", "blink")
+                vis_cfg = datos.get("visual") or {}
+                timer_visual_tipo = vis_cfg.get("tipo", timer_visual_tipo)
+                timer_visual_usar = bool(vis_cfg.get("usar", True))
+                if isinstance(vis_cfg.get("fondo"), dict):
+                    f = vis_cfg["fondo"]
+                    timer_fondo = {
+                        "r": int(f.get("r", 10)),
+                        "g": int(f.get("g", 10)),
+                        "b": int(f.get("b", 30)),
+                    }
+                await temporizador.iniciar(tiempo, color, accion)
+                _timer_push_visual()  # refleja el reloj/tarjeta en el remoto
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "timer_iniciado",
+                    "tiempo": tiempo, "color": color, "accion": accion,
+                }))
+
+            elif comando == "timer_visual":
+                # Cambio en vivo del visual del timer (desde la sección Visuales).
+                timer_visual_tipo = datos.get("tipo", timer_visual_tipo)
+                timer_visual_usar = bool(datos.get("usar", True))
+                if isinstance(datos.get("fondo"), dict):
+                    f = datos["fondo"]
+                    timer_fondo = {
+                        "r": int(f.get("r", 10)),
+                        "g": int(f.get("g", 10)),
+                        "b": int(f.get("b", 30)),
+                    }
+                if temporizador.activo:
+                    _timer_push_visual()
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "timer_visual_actualizado",
+                    "tipo": timer_visual_tipo, "usar": timer_visual_usar,
+                }))
+
+            elif comando == "timer_pausar":
+                await temporizador.pausar()
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "timer_pausado",
+                }))
+
+            elif comando == "timer_reanudar":
+                await temporizador.reanudar()
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "timer_reanudado",
+                }))
+
+            elif comando == "timer_detener":
+                temporizador.detener()
+                await websocket.send(json.dumps({
+                    "ok": True, "evento": "timer_detenido",
+                }))
+
             else:
                 await websocket.send(json.dumps({
                     "ok": False, "error": f"Comando desconocido: {comando}"
@@ -782,6 +884,7 @@ async def manejar_cliente(websocket):
         if tarea_ritmo:
             tarea_ritmo.cancel()
             tarea_ritmo = None
+        temporizador.detener()
         ambilight_activado = False
         capturador.detener()
         if tarea_ambilight:
@@ -1107,12 +1210,12 @@ async def _auth_spotify_task(websocket, spotify):
         else:
             await _enviar_json(websocket, {
                 "ok": False, "evento": "spotify_error",
-                "error": "No se pudo autenticar con Spotify"
+                "error": "No se pudo conectar con Spotify. Intentá de nuevo."
             })
-    except Exception as e:
+    except Exception:
         await _enviar_json(websocket, {
             "ok": False, "evento": "spotify_error",
-            "error": f"Error de autenticación: {str(e)}"
+            "error": "No se pudo conectar con Spotify. Intentá de nuevo."
         })
 
 

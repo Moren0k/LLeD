@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, Menu } = require('electron')
+const { app, BrowserWindow, dialog, Menu, shell } = require('electron')
 const path = require('path')
 
 // Sin barra de menú nativa (Archivo/Editar/Ver…): se ve como app propia.
@@ -40,10 +40,10 @@ function iniciarServidorPython() {
   procesoPython.stdout.on('data', escribir('servidor'))
   procesoPython.stderr.on('data', escribir('servidor'))
 
-  procesoPython.on('error', (err) => {
+  procesoPython.on('error', () => {
     dialog.showErrorBox(
-      'Error del backend',
-      `No se pudo iniciar el servidor LED:\n${err.message}\n\nRuta: ${rutaExe}`
+      'No se pudo iniciar la aplicación',
+      'Hubo un problema al iniciar la aplicación. Cerrala y volvé a abrirla. Si el problema continúa, reinstalala.'
     )
   })
 
@@ -75,6 +75,15 @@ async function crearVentana() {
       contextIsolation: true,
       nodeIntegration: false
     }
+  })
+
+  // Los enlaces externos (p. ej. el inicio de sesión de Spotify) se abren en el
+  // navegador del sistema, no dentro de la ventana de la aplicación.
+  ventanaPrincipal.webContents.setWindowOpenHandler(({ url }) => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      shell.openExternal(url)
+    }
+    return { action: 'deny' }
   })
 
   if (ES_DESARROLLO) {

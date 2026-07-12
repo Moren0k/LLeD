@@ -84,6 +84,9 @@ class VisualHub:
             "cancion": "", "artista": "",
             "titulo": True, "titulo_escala": 1.0, "titulo_x": 0.5, "titulo_y": 0.85,
             "tipo": "aurora", "movimiento": True,
+            # Estado del timer (para el reloj flip / tarjeta en el remoto).
+            "timer_on": False, "timer_progreso": 0.0, "timer_restante": 0.0,
+            "timer_fondo_r": 10, "timer_fondo_g": 10, "timer_fondo_b": 30,
         }
         self._ws_server = None
         self._http_server: ThreadingHTTPServer | None = None
@@ -195,6 +198,27 @@ class VisualHub:
             "y": self.estado["titulo_y"],
         })
 
+    # ── Timer (reloj flip / tarjeta en el remoto) ─────────────────
+
+    def set_timer_estado(self, on: bool) -> None:
+        self.estado["timer_on"] = bool(on)
+        self._emitir({"t": "timer_estado", "on": bool(on)})
+
+    def set_timer_tick(self, progreso: float, restante: float) -> None:
+        self.estado["timer_progreso"] = float(progreso)
+        self.estado["timer_restante"] = float(restante)
+        self._emitir({
+            "t": "timer_tick",
+            "p": round(float(progreso), 4),
+            "restante": round(float(restante), 2),
+        })
+
+    def set_timer_fondo(self, r: int, g: int, b: int) -> None:
+        self.estado["timer_fondo_r"] = int(r)
+        self.estado["timer_fondo_g"] = int(g)
+        self.estado["timer_fondo_b"] = int(b)
+        self._emitir({"t": "timer_fondo", "r": int(r), "g": int(g), "b": int(b)})
+
 
 # Singleton de proceso.
 hub = VisualHub()
@@ -245,15 +269,30 @@ _HTML = """<!doctype html>
   var tnombre=document.getElementById('tnombre');
   var tartista=document.getElementById('tartista');
   var ocultarT=null, mostrarTitulo=true;
+  var cancionNombre='', cancionArtista='';
+  var timerOn=false, timerRestante=0;
   var vis=window.CrearVisual(document.getElementById('cv'),{});
 
+  function fmtTiempo(t){
+    t=Math.max(0,Math.floor(t));
+    var h=Math.floor(t/3600), m=Math.floor((t%3600)/60), s=t%60;
+    var mm=(m<10?'0':'')+m, ss=(s<10?'0':'')+s;
+    return h>0 ? h+':'+mm+':'+ss : mm+':'+ss;
+  }
   function aplicarCancion(nombre,artista){
-    tnombre.textContent=nombre||'';
-    tartista.textContent=artista||'';
+    cancionNombre=nombre||''; cancionArtista=artista||'';
     refrescarTarjeta();
   }
   function refrescarTarjeta(){
-    var hay=(tnombre.textContent||'').length>0;
+    if(timerOn){
+      tnombre.textContent='TIMER';
+      tartista.textContent=fmtTiempo(timerRestante)+' restantes';
+      tarjeta.classList.toggle('oculto',!mostrarTitulo);
+      return;
+    }
+    tnombre.textContent=cancionNombre;
+    tartista.textContent=cancionArtista;
+    var hay=cancionNombre.length>0;
     tarjeta.classList.toggle('oculto',!(mostrarTitulo&&hay));
   }
   function aplicarTitulo(on,esc,x,y){
@@ -281,9 +320,15 @@ _HTML = """<!doctype html>
       else if(d.t==='visual'){vis.setTipo(d.tipo);vis.setMovimiento(d.movimiento)}
       else if(d.t==='cancion'){aplicarCancion(d.nombre,d.artista)}
       else if(d.t==='titulo'){aplicarTitulo(d.on,d.escala,d.x,d.y)}
+      else if(d.t==='timer_estado'){timerOn=!!d.on;refrescarTarjeta()}
+      else if(d.t==='timer_tick'){timerRestante=d.restante;vis.setTimerProgreso(d.p,d.restante);if(timerOn)refrescarTarjeta()}
+      else if(d.t==='timer_fondo'){vis.setTimerFondoColor(d.r,d.g,d.b)}
       else if(d.t==='estado'){
         vis.setColor(d.r,d.g,d.b);vis.setRitmo(d.ritmo);
         vis.setTipo(d.tipo);vis.setMovimiento(d.movimiento);
+        vis.setTimerFondoColor(d.timer_fondo_r,d.timer_fondo_g,d.timer_fondo_b);
+        vis.setTimerProgreso(d.timer_progreso,d.timer_restante);
+        timerRestante=d.timer_restante; timerOn=!!d.timer_on;
         aplicarTitulo(d.titulo,d.titulo_escala,d.titulo_x,d.titulo_y);
         aplicarCancion(d.cancion,d.artista);
       }

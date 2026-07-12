@@ -12,7 +12,7 @@
     </div>
 
     <div v-if="!ctrl.spotifyTieneCredenciales" class="glass card">
-      <p class="aviso">Configura <code>spotify_cliente_id</code> y <code>spotify_cliente_secreto</code> en <code>config.json</code>.</p>
+      <p class="aviso">Por ahora no se puede conectar con Spotify. Intentá de nuevo más tarde.</p>
     </div>
 
     <template v-else>
@@ -30,6 +30,11 @@
         >{{ ctrl.spotifyCargando ? 'Conectando…' : 'Conectar' }}</button>
         <button v-else class="btn btn-glass" @click="ctrl.cerrarSesionSpotify">Desconectar</button>
       </div>
+
+      <p v-if="ctrl.spotifyCargando && ctrl.spotifyAuthUrl" class="fallback">
+        Si no se abrió el navegador,
+        <a :href="ctrl.spotifyAuthUrl" target="_blank" rel="noopener">abrí el inicio de sesión acá</a>.
+      </p>
 
       <template v-if="ctrl.spotifyAutenticado">
         <!-- Canción actual -->
@@ -97,7 +102,8 @@ const etiquetaFuente = computed(() => ({
 .card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
 
 .aviso { font-size: 0.85rem; color: #ffb347; line-height: 1.5; }
-.aviso code { background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 5px; }
+.fallback { font-size: 0.8rem; color: var(--text2); line-height: 1.5; margin: -6px 2px 0; }
+.fallback a { color: var(--tint); font-weight: 600; }
 
 .conexion { flex-direction: row; align-items: center; justify-content: space-between; }
 .estado { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 500; }
