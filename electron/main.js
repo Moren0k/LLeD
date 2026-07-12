@@ -109,8 +109,8 @@ function iniciarServidorPython() {
 
   const escribir = (etiqueta) => (datos) => {
     const txt = `[${etiqueta}] ${datos.toString().trim()}`
-    console.log(txt)
-    if (logStream) logStream.write(txt + '\n')
+    if (ES_DESARROLLO) console.log(txt)
+    if (logStream) logStream.write(txt + '\n') // el archivo de log siempre queda
   }
   procesoPython.stdout.on('data', escribir('servidor'))
   procesoPython.stderr.on('data', escribir('servidor'))
@@ -123,7 +123,7 @@ function iniciarServidorPython() {
   })
 
   procesoPython.on('close', (codigo) => {
-    console.log(`Servidor Python terminado (código ${codigo})`)
+    if (ES_DESARROLLO) console.log(`Servidor Python terminado (código ${codigo})`)
     procesoPython = null
   })
 }

@@ -35,7 +35,7 @@ export function useWebSocket() {
           manejadores[datos.evento](datos)
         }
       } catch {
-        console.warn('Mensaje inválido:', evento.data)
+        if (import.meta.env.DEV) console.warn('Mensaje inválido:', evento.data)
       }
     }
   }
@@ -43,7 +43,7 @@ export function useWebSocket() {
   function enviar(comando, datos = {}) {
     if (socket && socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ comando, ...datos }))
-    } else {
+    } else if (import.meta.env.DEV) {
       console.warn('WebSocket no conectado, no se pudo enviar:', comando)
     }
   }

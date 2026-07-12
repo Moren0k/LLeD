@@ -45,6 +45,7 @@ from audio_ritmo_final import DetectorRitmo
 from cache_colores import CacheColores, FUENTE_AUTO, FUENTE_USUARIO
 from extractor_color import portada_a_rgb
 from led import TiraLED, _hsv_a_rgb
+from registro import log
 from rutas import ruta_datos
 from spotify_cliente import ClienteSpotify, cargar_config_spotify
 from transiciones import MotorTransiciones
@@ -325,9 +326,9 @@ async def manejar_cliente(websocket):
         if direccion:
             try:
                 await conectar_a(direccion)
-                print("Cliente conectado. Tira lista.")
+                log.info("Cliente conectado. Tira lista.")
             except Exception as e:
-                print(f"No se pudo conectar al dispositivo {direccion}: {e}")
+                log.warning("No se pudo conectar al dispositivo: %s", e)
         await websocket.send(json.dumps({
             "ok": True, "evento": "conectado", "dispositivo": info_dispositivo()
         }))
@@ -932,7 +933,7 @@ async def manejar_cliente(websocket):
                 }))
 
     except websockets.exceptions.ConnectionClosed:
-        print("Cliente desconectado.")
+        log.info("Cliente desconectado.")
     finally:
         if tarea_sincronizacion:
             tarea_sincronizacion.cancel()
@@ -1274,7 +1275,7 @@ async def bucle_sincronizacion(websocket, estado: EstadoLED, spotify, cache, aju
             await asyncio.sleep(_intervalo(cancion))
 
     except asyncio.CancelledError:
-        print("Sincronización detenida.")
+        log.info("Sincronización detenida.")
 
 
 async def _notificar_color(websocket, cancion, r, g, b, fuente):
@@ -1343,7 +1344,7 @@ async def _auth_spotify_task(websocket, spotify):
 
 async def main():
     """Inicia el servidor WebSocket."""
-    print(f"Servidor WebSocket iniciado en ws://localhost:{PUERTO}")
+    log.info("Servidor WebSocket iniciado en ws://localhost:%s", PUERTO)
     async with websockets.serve(manejar_cliente, "localhost", PUERTO):
         await asyncio.Future()
 
