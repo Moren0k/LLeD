@@ -88,7 +88,7 @@
           @click="elegirFondo(c)"
         ></button>
       </div>
-      <input class="hex" type="text" maxlength="7" :value="hexFondo" @input="onHexFondo" placeholder="#0a0a1e" />
+      <input class="input hex" type="text" maxlength="7" :value="hexFondo" @input="onHexFondo" placeholder="#0a0a1e" />
     </div>
 
     <!-- Título de la canción -->
@@ -129,7 +129,7 @@
       <div class="fila-top">
         <div>
           <div class="fila-titulo">
-            <span class="titulo">Visual remoto</span>
+            <span class="sub">Visual remoto</span>
             <AyudaInfo>Abre una página web en tu red local con este mismo visual. Copiá la dirección y abrila en otro dispositivo (celular, TV, laptop) conectado al mismo WiFi.</AyudaInfo>
           </div>
           <p class="nota">Verlo en otra pantalla, sincronizado en vivo.</p>
@@ -229,28 +229,23 @@ function copiar(texto) {
 </script>
 
 <style scoped>
-.pagina { display: flex; flex-direction: column; gap: 16px; }
-.card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-
-.preview { position: relative; height: 190px; border-radius: 16px; overflow: hidden; background: #05060a; }
+/* Estilos propios de la página; el resto viene del sistema (styles.css). */
+.preview { position: relative; height: 190px; border-radius: var(--radius-sm); overflow: hidden; background: #05060a; }
 .preview-canvas { position: absolute; inset: 0; }
 .prev-tarjeta {
   position: absolute; transform: translate(-50%, -50%);
   padding: 6px 12px; border-radius: 12px; font-size: 0.78rem; font-weight: 600; color: #fff;
-  background: rgba(255,255,255,0.1); backdrop-filter: blur(10px);
-  border: 1px solid rgba(255,255,255,0.16); max-width: 70%;
+  background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.16); max-width: 70%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
 }
 .full { width: 100%; justify-content: center; }
 
-.fila-titulo { display: flex; align-items: center; gap: 8px; }
-.sub, .titulo { font-size: 0.95rem; font-weight: 600; }
-
 .estilos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .estilo {
   display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 14px 6px; border-radius: 14px; cursor: pointer; font-family: inherit;
-  background: rgba(0,0,0,0.25); border: 1px solid var(--glass-border); color: var(--text2);
+  padding: 14px 6px; border-radius: var(--radius-sm); cursor: pointer; font-family: inherit;
+  background: rgba(0, 0, 0, 0.25); border: 1px solid var(--glass-border); color: var(--text2);
   transition: all 0.15s;
 }
 .estilo:hover { color: var(--text); border-color: var(--glass-border-strong); }
@@ -262,41 +257,24 @@ function copiar(texto) {
 .timer-hint {
   display: flex; align-items: center; gap: 8px;
   font-size: 0.78rem; color: var(--text2); line-height: 1.4;
-  padding: 8px 12px; border-radius: 10px;
+  padding: 8px 12px; border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.04); border: 1px solid var(--glass-border);
 }
 .timer-hint svg { flex-shrink: 0; color: var(--tint); }
 
-.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
-.swatch {
-  width: 38px; height: 38px; border-radius: 10px;
-  border: 2px solid transparent; cursor: pointer; transition: all 0.15s; outline: none;
-}
-.swatch:hover { transform: scale(1.1); }
-.swatch.selected { border-color: #fff; box-shadow: 0 0 12px rgba(255,255,255,0.3); }
-.hex {
-  width: 110px; padding: 8px 12px; border-radius: 10px;
-  border: 1px solid var(--glass-border); background: rgba(0,0,0,0.25);
-  color: #fff; font-family: monospace; font-size: 0.9rem; outline: none; transition: border 0.15s;
-}
-.hex:focus { border-color: var(--tint); }
+.hex { max-width: 140px; font-family: 'SF Mono', 'Consolas', monospace; text-transform: uppercase; }
 
 .mov { margin-top: 2px; }
-.toggle-txt { font-size: 0.88rem; }
-
-.fila { display: flex; align-items: center; gap: 12px; }
-.valor { font-size: 0.82rem; font-weight: 600; color: var(--text2); min-width: 36px; text-align: right; }
-.nota { font-size: 0.76rem; color: var(--text3); line-height: 1.5; }
 
 .posiciones { display: flex; gap: 6px; flex-wrap: wrap; }
-.pos-btn { position: relative; width: 38px; height: 26px; border-radius: 7px; cursor: pointer; background: rgba(0,0,0,0.3); border: 1px solid var(--glass-border); padding: 0; transition: border-color 0.15s; }
+.pos-btn { position: relative; width: 38px; height: 26px; border-radius: 7px; cursor: pointer; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--glass-border); padding: 0; transition: border-color 0.15s; }
 .pos-btn:hover { border-color: var(--tint); }
 .pos-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--tint); transform: translate(-50%, -50%); }
 
 .fila-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .url-box { display: flex; flex-direction: column; gap: 6px; }
 .url-fila { display: flex; align-items: center; gap: 8px; }
-.url-txt { flex: 1; font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.9rem; font-weight: 600; background: rgba(0,0,0,0.3); padding: 10px 12px; border-radius: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.url-txt { flex: 1; min-width: 0; font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.9rem; font-weight: 600; background: rgba(0, 0, 0, 0.3); padding: 10px 12px; border-radius: var(--radius-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .copiar { flex-shrink: 0; }
 .hint { font-size: 0.74rem; color: var(--text3); }
 </style>

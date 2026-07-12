@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, Menu, shell } = require('electron')
+const { app, BrowserWindow, dialog, Menu, shell, Tray, nativeImage, ipcMain } = require('electron')
 const path = require('path')
 
 // Sin barra de menú nativa (Archivo/Editar/Ver…): se ve como app propia.
@@ -8,8 +8,41 @@ const { spawn } = require('child_process')
 
 let ventanaPrincipal = null
 let procesoPython = null
+let bandeja = null
+// Comportamiento al cerrar la ventana: 'salir' | 'minimizar'.
+let cerrarModo = 'salir'
+// Marca cuando el cierre es definitivo (para no minimizar al salir de verdad).
+let saliendoDeVerdad = false
 const ES_DESARROLLO = !app.isPackaged
 const PUERTO_VITE = 5173
+
+const RUTA_ICONO = path.join(app.getAppPath(), 'build', 'icon.ico')
+
+function mostrarVentana() {
+  if (!ventanaPrincipal) return
+  ventanaPrincipal.show()
+  ventanaPrincipal.setSkipTaskbar(false)
+  ventanaPrincipal.focus()
+}
+
+function salirDeVerdad() {
+  saliendoDeVerdad = true
+  app.quit()
+}
+
+function asegurarBandeja() {
+  if (bandeja) return
+  let imagen = nativeImage.createFromPath(RUTA_ICONO)
+  if (imagen.isEmpty()) imagen = nativeImage.createEmpty()
+  bandeja = new Tray(imagen)
+  bandeja.setToolTip('LLeD')
+  bandeja.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Abrir LLeD', click: mostrarVentana },
+    { type: 'separator' },
+    { label: 'Salir', click: salirDeVerdad },
+  ]))
+  bandeja.on('click', mostrarVentana)
+}
 
 function iniciarServidorPython() {
   // En producción se lanza el backend congelado (servidor.exe) incluido como
@@ -93,10 +126,26 @@ async function crearVentana() {
     await ventanaPrincipal.loadFile(path.join(__dirname, '..', 'dist', 'index.html'))
   }
 
+  // Al pulsar la X: minimizar al área de notificación o cerrar del todo,
+  // según la preferencia elegida por el usuario en Ajustes.
+  ventanaPrincipal.on('close', (evento) => {
+    if (cerrarModo === 'minimizar' && !saliendoDeVerdad) {
+      evento.preventDefault()
+      ventanaPrincipal.hide()
+      ventanaPrincipal.setSkipTaskbar(true)
+    }
+  })
+
   ventanaPrincipal.on('closed', () => {
     ventanaPrincipal = null
   })
 }
+
+// La preferencia de cierre llega desde la interfaz (Ajustes).
+ipcMain.on('lled:set-cerrar-modo', (_evento, modo) => {
+  cerrarModo = modo === 'minimizar' ? 'minimizar' : 'salir'
+  if (cerrarModo === 'minimizar') asegurarBandeja()
+})
 
 app.whenReady().then(async () => {
   // En desarrollo el backend lo arranca `npm run dev` (dev:servidor).
@@ -112,5 +161,9 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  // Cierre definitivo: permite que la ventana se cierre (aunque esté en modo
+  // minimizar), libera el backend y quita el icono del área de notificación.
+  saliendoDeVerdad = true
   detenerServidorPython()
+  if (bandeja) { bandeja.destroy(); bandeja = null }
 })

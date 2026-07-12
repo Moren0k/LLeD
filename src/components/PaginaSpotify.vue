@@ -98,17 +98,12 @@ const etiquetaFuente = computed(() => ({
 </script>
 
 <style scoped>
-.pagina { display: flex; flex-direction: column; gap: 16px; }
-.card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-
+/* Estilos propios de la página; el resto viene del sistema (styles.css). */
 .aviso { font-size: 0.85rem; color: #ffb347; line-height: 1.5; }
 .fallback { font-size: 0.8rem; color: var(--text2); line-height: 1.5; margin: -6px 2px 0; }
 .fallback a { color: var(--tint); font-weight: 600; }
 
 .conexion { flex-direction: row; align-items: center; justify-content: space-between; }
-.estado { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 500; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text3); }
-.dot.on { background: #1db954; box-shadow: 0 0 8px #1db954; }
 
 .track { flex-direction: row; align-items: center; gap: 14px; }
 .portada { width: 60px; height: 60px; border-radius: 14px; overflow: hidden; flex-shrink: 0; }
@@ -119,10 +114,9 @@ const etiquetaFuente = computed(() => ({
 .fuente {
   font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
   margin-top: 3px; width: fit-content; padding: 2px 7px; border-radius: 6px;
-  color: var(--text2); background: rgba(255,255,255,0.08);
+  color: var(--text2); background: rgba(255, 255, 255, 0.08);
 }
-.fuente.usuario { color: var(--tint); background: rgba(125,75,255,0.16); }
+.fuente.usuario { color: var(--tint); background: rgba(125, 75, 255, 0.16); }
 
-.fila { display: flex; align-items: center; gap: 12px; }
 .sync { width: 100%; justify-content: center; }
 </style>

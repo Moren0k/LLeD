@@ -82,6 +82,120 @@ body {
   min-width: 74px;
 }
 
+/* ── Layout de páginas y tarjetas (sistema unificado) ──────────────
+   Todas las páginas y cards comparten estas primitivas para que la
+   interfaz se vea como un único sistema de diseño. */
+.pagina {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.head { margin-bottom: 2px; }
+
+/* Tarjeta base: superficie de vidrio + espaciado uniforme.
+   Referencia visual única para toda la aplicación. */
+.card {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Título de sección dentro de una card. */
+.sub {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.fila-titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Fila horizontal (label + control). */
+.fila {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+/* Fila de activación (estado a la izquierda, botón a la derecha). */
+.fila-activar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* Nota/leyenda secundaria. */
+.nota {
+  font-size: 0.78rem;
+  color: var(--text3);
+  line-height: 1.55;
+}
+
+/* Valor numérico alineado a la derecha (sliders). */
+.valor {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text2);
+  min-width: 44px;
+  text-align: right;
+}
+
+/* Grupo de botones de acción. */
+.acciones { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Indicador de estado (punto + texto). */
+.estado {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  min-width: 0;
+}
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text3);
+  flex-shrink: 0;
+}
+.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
+
+/* Contenedor de muestras de color. */
+.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Insignia/etiqueta pequeña (badge). */
+.badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tint);
+  background: rgba(125, 75, 255, 0.16);
+  padding: 3px 7px;
+  border-radius: 7px;
+  flex-shrink: 0;
+}
+
+/* Campo de texto/numérico unificado. */
+.input {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--glass-border);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus { border-color: var(--tint); }
+
 /* ── Botones ───────────────────────────────────────────────────── */
 .btn {
   font-family: inherit;
@@ -90,7 +204,9 @@ body {
   transition: transform 0.12s ease, background 0.18s, border-color 0.18s, opacity 0.18s;
 }
 .btn:active { transform: scale(0.97); }
-.btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+.btn:disabled { opacity: 0.4; cursor: default; transform: none; box-shadow: none; }
+/* Botón a ancho completo, contenido centrado. */
+.btn.full, .full { width: 100%; justify-content: center; }
 
 .btn-glass {
   background: var(--glass-bg-strong);
@@ -210,6 +326,7 @@ body {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 .toggle input:checked + .track .thumb { transform: translateX(19px); }
+.toggle-txt { font-size: 0.88rem; }
 
 /* ── Swatches ──────────────────────────────────────────────────── */
 .swatch {

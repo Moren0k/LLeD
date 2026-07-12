@@ -29,7 +29,7 @@
     <template v-if="ctrl.ritmoActivado">
       <!-- Color del flash -->
       <div class="glass card">
-        <span class="field-label bloque">Color del flash</span>
+        <span class="sub">Color del flash</span>
         <div class="swatches">
           <button
             v-for="c in ctrl.coloresFlash"
@@ -84,24 +84,11 @@ const ctrl = inject('ctrl')
 </script>
 
 <style scoped>
-.pagina { display: flex; flex-direction: column; gap: 16px; }
-.card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-.bloque { display: block; }
-
-.fila-activar { display: flex; align-items: center; justify-content: space-between; }
-.estado { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 500; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text3); }
-.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
-
-.swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Estilos propios de la página; el resto viene del sistema (styles.css). */
 .swatch-song {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
   display: flex; align-items: center; justify-content: center;
   color: var(--text2); border-color: var(--glass-border);
 }
 .swatch-song.selected { border-color: var(--tint); color: var(--tint); }
-
-.fila { display: flex; align-items: center; gap: 12px; }
-.toggle-txt { font-size: 0.88rem; }
-.nota { font-size: 0.76rem; color: var(--text3); line-height: 1.5; }
 </style>

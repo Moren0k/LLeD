@@ -1,8 +1,8 @@
 <template>
   <div class="app" :style="tintStyle">
-    <!-- Fondo ambiental (visual en canvas) -->
-    <div class="fondo">
-      <VisualCanvas />
+    <!-- Fondo ambiental: visual animado o color sólido, según preferencia. -->
+    <div class="fondo" :style="fondoStyle">
+      <VisualCanvas v-if="ctrl.fondoTipo === 'visuales'" />
     </div>
 
     <!-- Barra superior -->
@@ -81,6 +81,13 @@ const paginas = [
 ]
 
 const paginaComp = computed(() => paginas.find((p) => p.id === paginaActiva.value).comp)
+
+// Fondo: color sólido elegido por el usuario, o vacío para dejar ver el visual.
+const fondoStyle = computed(() =>
+  ctrl.fondoTipo === 'solido'
+    ? { background: `rgb(${ctrl.fondoColor.r}, ${ctrl.fondoColor.g}, ${ctrl.fondoColor.b})` }
+    : {}
+)
 
 // El acento de toda la interfaz sigue el color del fondo (transición fluida).
 const tintStyle = computed(() => {

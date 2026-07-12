@@ -5,19 +5,9 @@
         <h1 class="page-title">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
           Cine Mode
-          <AyudaInfo>La tira toma el color de lo que se ve en ESTA PC (tipo Ambilight), con la intensidad según la escena, y se complementa con el audio (destellos en golpes fuertes). Es un solo color para toda la tira. Función local.</AyudaInfo>
+          <AyudaInfo>La tira toma el color de lo que se ve en esta PC, con la intensidad según la escena, y se complementa con el audio (destellos en los sonidos fuertes). Es un solo color para toda la tira y funciona de forma local.<br><br><b>Compatibilidad:</b> los videos abiertos funcionan directamente. Para servicios con contenido protegido, si la tira queda apagada, desactivá la aceleración por hardware del navegador (Configuración → Sistema). Si la pantalla se ve en negro, la tira sigue reaccionando solo con el sonido.</AyudaInfo>
         </h1>
-        <p class="page-subtitle">Ambiente inmersivo para películas y series, guiado por pantalla + sonido.</p>
-      </div>
-    </div>
-
-    <!-- Aviso Netflix / DRM -->
-    <div class="glass aviso">
-      <span class="aviso-ico">ⓘ</span>
-      <div>
-        <b>YouTube funciona directo.</b> Para <b>Netflix</b> (y otros con DRM), si ves la tira apagada,
-        desactivá la <b>aceleración por hardware</b> del navegador (Configuración → Sistema). Si la
-        pantalla sale negra por DRM, Cine Mode sigue reaccionando <b>solo con el audio</b>.
+        <p class="page-subtitle">Ambiente inmersivo para películas y series, guiado por la pantalla y el sonido.</p>
       </div>
     </div>
 
@@ -105,20 +95,7 @@ onMounted(() => ctrl.cargarMonitores())
 </script>
 
 <style scoped>
-.pagina { display: flex; flex-direction: column; gap: 16px; }
-.card { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-
-.aviso { display: flex; gap: 10px; padding: 14px 16px; font-size: 0.8rem; line-height: 1.5; color: var(--text2); }
-.aviso-ico { color: var(--tint); font-weight: 700; flex-shrink: 0; }
-.aviso b { color: var(--text); font-weight: 600; }
-
-.fila-activar { display: flex; align-items: center; justify-content: space-between; }
-.estado { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 500; }
-.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text3); }
-.dot.on { background: var(--green); box-shadow: 0 0 8px var(--green); }
-
-.fila { display: flex; align-items: center; gap: 12px; }
-.sub { font-size: 0.95rem; font-weight: 600; }
-.toggle-txt { font-size: 0.88rem; }
-.valor { font-size: 0.8rem; font-weight: 600; color: var(--text2); min-width: 42px; text-align: right; }
+/* Estilos propios de la página; el resto viene del sistema (styles.css). */
+/* El selector de monitor puede envolver si hay nombres largos. */
+.fila .segmented { flex-wrap: wrap; }
 </style>
