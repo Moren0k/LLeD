@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, Menu, shell, Tray, nativeImage, ipcMain } = require('electron')
+const { app, BrowserWindow, dialog, Menu, shell, Tray, nativeImage, ipcMain, clipboard } = require('electron')
 const path = require('path')
 
 // Sin barra de menú nativa (Archivo/Editar/Ver…): se ve como app propia.
@@ -18,6 +18,16 @@ const PUERTO_VITE = 5173
 
 const RUTA_ICONO = path.join(app.getAppPath(), 'build', 'icon.ico')
 
+// Estado de la app que informa la interfaz, para reflejarlo en el menú de la bandeja.
+let estadoApp = {
+  ledEncendido: true,
+  ritmoActivado: false,
+  ambilightActivado: false,
+  visualActivo: false,
+  visualUrl: '',
+  modo: 'Color manual',
+}
+
 function mostrarVentana() {
   if (!ventanaPrincipal) return
   ventanaPrincipal.show()
@@ -30,17 +40,49 @@ function salirDeVerdad() {
   app.quit()
 }
 
+// Envía una acción del menú de la bandeja a la interfaz para que la ejecute.
+function enviarAccion(accion) {
+  if (accion === 'fullscreen') mostrarVentana()
+  if (ventanaPrincipal) ventanaPrincipal.webContents.send('lled:tray-accion', accion)
+}
+
+function construirMenuBandeja() {
+  const e = estadoApp
+  const items = [
+    { label: 'Abrir LLeD', click: mostrarVentana },
+    { type: 'separator' },
+    { label: `Modo actual: ${e.modo || 'Color manual'}`, enabled: false },
+    { type: 'separator' },
+    { label: e.ledEncendido ? 'Apagar luces' : 'Encender luces', click: () => enviarAccion('power') },
+    { label: e.ritmoActivado ? 'Desactivar modo ritmo' : 'Activar modo ritmo', click: () => enviarAccion('ritmo') },
+    { label: e.ambilightActivado ? 'Desactivar modo cine' : 'Activar modo cine', click: () => enviarAccion('cine') },
+    { type: 'separator' },
+    { label: e.visualActivo ? 'Detener visual remoto' : 'Activar visual remoto', click: () => enviarAccion('visual') },
+  ]
+  if (e.visualActivo && e.visualUrl) {
+    items.push({ label: 'Copiar dirección del visual', click: () => clipboard.writeText(e.visualUrl) })
+  }
+  items.push({ label: 'Ver visual en pantalla completa', click: () => enviarAccion('fullscreen') })
+  items.push({ type: 'separator' })
+  items.push({ label: 'Temporizador · 5 minutos', click: () => enviarAccion('timer:300') })
+  items.push({ label: 'Temporizador · 10 minutos', click: () => enviarAccion('timer:600') })
+  items.push({ label: 'Temporizador · 15 minutos', click: () => enviarAccion('timer:900') })
+  items.push({ type: 'separator' })
+  items.push({ label: 'Salir', click: salirDeVerdad })
+  return Menu.buildFromTemplate(items)
+}
+
+function refrescarMenuBandeja() {
+  if (bandeja) bandeja.setContextMenu(construirMenuBandeja())
+}
+
 function asegurarBandeja() {
   if (bandeja) return
   let imagen = nativeImage.createFromPath(RUTA_ICONO)
   if (imagen.isEmpty()) imagen = nativeImage.createEmpty()
   bandeja = new Tray(imagen)
   bandeja.setToolTip('LLeD')
-  bandeja.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Abrir LLeD', click: mostrarVentana },
-    { type: 'separator' },
-    { label: 'Salir', click: salirDeVerdad },
-  ]))
+  refrescarMenuBandeja()
   bandeja.on('click', mostrarVentana)
 }
 
@@ -145,6 +187,19 @@ async function crearVentana() {
 ipcMain.on('lled:set-cerrar-modo', (_evento, modo) => {
   cerrarModo = modo === 'minimizar' ? 'minimizar' : 'salir'
   if (cerrarModo === 'minimizar') asegurarBandeja()
+})
+
+// La interfaz informa su estado para actualizar el menú de la bandeja.
+ipcMain.on('lled:estado', (_evento, estado) => {
+  if (estado && typeof estado === 'object') {
+    estadoApp = { ...estadoApp, ...estado }
+    refrescarMenuBandeja()
+  }
+})
+
+// Copia texto al portapapeles del sistema (p. ej. la dirección del visual).
+ipcMain.on('lled:copiar', (_evento, texto) => {
+  clipboard.writeText(String(texto || ''))
 })
 
 app.whenReady().then(async () => {
