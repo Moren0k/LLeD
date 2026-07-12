@@ -45,6 +45,7 @@ from audio_ritmo_final import DetectorRitmo
 from cache_colores import CacheColores, FUENTE_AUTO, FUENTE_USUARIO
 from extractor_color import portada_a_rgb
 from led import TiraLED, _hsv_a_rgb
+from letras import obtener_letra_sincronizada, indice_linea_actual
 from registro import log
 from rutas import ruta_datos
 from spotify_cliente import ClienteSpotify, cargar_config_spotify
@@ -286,6 +287,9 @@ async def manejar_cliente(websocket):
     ambiente_efecto = "respiracion"
     tarea_ambiente: Optional[asyncio.Task] = None
 
+    # Letra sincronizada de la canción.
+    tarea_letra: Optional[asyncio.Task] = None
+
     # Estado del visual del timer (elegido desde la sección Visuales del front).
     timer_visual_tipo = "splitflap"
     timer_visual_usar = True
@@ -332,6 +336,10 @@ async def manejar_cliente(websocket):
         await websocket.send(json.dumps({
             "ok": True, "evento": "conectado", "dispositivo": info_dispositivo()
         }))
+
+        # Restaura la letra si el usuario la había dejado activada.
+        if ajustes.get("visual_letra"):
+            tarea_letra = asyncio.create_task(_bucle_letra(websocket, spotify))
 
         async for mensaje in websocket:
             datos = json.loads(mensaje)
@@ -593,6 +601,21 @@ async def manejar_cliente(websocket):
                 await websocket.send(json.dumps({
                     "ok": True, "evento": "ambiente_detenido"
                 }))
+
+            # ── Comandos Letra (letra sincronizada) ───────────────────
+
+            elif comando == "letra_iniciar":
+                if tarea_letra:
+                    tarea_letra.cancel()
+                tarea_letra = asyncio.create_task(_bucle_letra(websocket, spotify))
+                await websocket.send(json.dumps({"ok": True, "evento": "letra_iniciada"}))
+
+            elif comando == "letra_detener":
+                if tarea_letra:
+                    tarea_letra.cancel()
+                    tarea_letra = None
+                visual_hub.set_letra("", "")
+                await websocket.send(json.dumps({"ok": True, "evento": "letra_detenida"}))
 
             elif comando == "ritmo_flash_color":
                 estado.r_flash = datos.get("r", 255)
@@ -954,6 +977,9 @@ async def manejar_cliente(websocket):
         if tarea_ambiente:
             tarea_ambiente.cancel()
             tarea_ambiente = None
+        if tarea_letra:
+            tarea_letra.cancel()
+            tarea_letra = None
         await tira.desconectar()
 
 
@@ -1012,6 +1038,65 @@ async def _bucle_ambiente(websocket, estado: EstadoLED, motor, obtener_efecto):
             await asyncio.sleep(1.0 / fps)
     except asyncio.CancelledError:
         pass
+
+
+async def _bucle_letra(websocket, spotify):
+    """Muestra la letra sincronizada de la canción de Spotify en tiempo real.
+
+    Sondea la reproducción cada ~1s (pista + progreso), interpola el tiempo entre
+    sondeos para que la línea cambie suave, y emite solo cuando la línea cambia
+    (a la app y al visual remoto). La letra viene de LRCLIB (ver letras.py).
+    """
+    loop = asyncio.get_event_loop()
+    cancion_id = None
+    lineas = None
+    ultimo_idx = -2
+    prog_base = 0.0
+    wall_base = time.time()
+    reproduciendo = True
+    ultimo_sondeo = 0.0
+    try:
+        while True:
+            ahora = time.time()
+            if ahora - ultimo_sondeo >= 1.0:
+                ultimo_sondeo = ahora
+                cancion = await spotify.obtener_cancion_actual()
+                if cancion:
+                    if cancion["cancion_id"] != cancion_id:
+                        cancion_id = cancion["cancion_id"]
+                        ultimo_idx = -2
+                        lineas = await loop.run_in_executor(
+                            None, obtener_letra_sincronizada,
+                            cancion.get("artista", ""), cancion.get("nombre", ""),
+                            "", int(cancion.get("duration_ms", 0) // 1000),
+                        )
+                        await _enviar_json(websocket, {
+                            "ok": True, "evento": "letra_estado", "tiene": bool(lineas)
+                        })
+                        visual_hub.set_letra("", "")
+                    prog_base = cancion.get("progress_ms", 0) / 1000.0
+                    wall_base = ahora
+                    reproduciendo = cancion.get("reproduciendo", True)
+                elif cancion_id is not None:
+                    cancion_id, lineas, ultimo_idx = None, None, -2
+                    await _enviar_json(websocket, {"ok": True, "evento": "letra_estado", "tiene": False})
+                    await _enviar_json(websocket, {"ok": True, "evento": "letra", "actual": "", "siguiente": ""})
+                    visual_hub.set_letra("", "")
+
+            t = prog_base + ((time.time() - wall_base) if reproduciendo else 0.0)
+            if lineas:
+                idx = indice_linea_actual(lineas, t)
+                if idx != ultimo_idx:
+                    ultimo_idx = idx
+                    actual = lineas[idx][1] if idx >= 0 else ""
+                    siguiente = lineas[idx + 1][1] if 0 <= idx + 1 < len(lineas) else ""
+                    await _enviar_json(websocket, {
+                        "ok": True, "evento": "letra", "actual": actual, "siguiente": siguiente
+                    })
+                    visual_hub.set_letra(actual, siguiente)
+            await asyncio.sleep(0.2)
+    except asyncio.CancelledError:
+        visual_hub.set_letra("", "")
 
 
 async def _bucle_ritmo(websocket, estado: EstadoLED, detector):

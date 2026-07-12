@@ -2,6 +2,11 @@
   <div ref="raiz" class="full">
     <VisualCanvas class="full-canvas" />
 
+    <div v-if="ctrl.ajustes.visual_letra && ctrl.letraActual" class="letra">
+      <div class="letra-actual">{{ ctrl.letraActual }}</div>
+      <div class="letra-sig">{{ ctrl.letraSiguiente }}</div>
+    </div>
+
     <div
       v-if="mostrarTarjeta"
       class="tarjeta"
@@ -100,6 +105,20 @@ onUnmounted(() => {
   background: #05060a;
 }
 .full-canvas { position: absolute; inset: 0; }
+
+.letra {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(92vw, 900px); text-align: center; pointer-events: none; z-index: 5;
+  transition: opacity 0.3s;
+}
+.letra-actual {
+  color: #fff; font-weight: 800; line-height: 1.2;
+  font-size: clamp(24px, 5.2vw, 52px); text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+}
+.letra-sig {
+  color: rgba(255, 255, 255, 0.5); font-weight: 600; margin-top: 10px;
+  font-size: clamp(15px, 3vw, 26px);
+}
 
 .tarjeta {
   position: absolute;

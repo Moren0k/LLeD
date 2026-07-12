@@ -87,6 +87,8 @@ class VisualHub:
             # Carátula del álbum como visual.
             "portada_tarjeta": False, "portada_difuminado": True,
             "portada_x": 0.5, "portada_y": 0.42,
+            # Letra sincronizada.
+            "letra": "", "letra_sig": "",
             # Estado del timer (para el reloj flip / tarjeta en el remoto).
             "timer_on": False, "timer_progreso": 0.0, "timer_restante": 0.0,
             "timer_fondo_r": 10, "timer_fondo_g": 10, "timer_fondo_b": 30,
@@ -231,6 +233,11 @@ class VisualHub:
             "restante": round(float(restante), 2),
         })
 
+    def set_letra(self, actual: str, siguiente: str = "") -> None:
+        self.estado["letra"] = actual or ""
+        self.estado["letra_sig"] = siguiente or ""
+        self._emitir({"t": "letra", "actual": actual or "", "siguiente": siguiente or ""})
+
     def set_timer_fondo(self, r: int, g: int, b: int) -> None:
         self.estado["timer_fondo_r"] = int(r)
         self.estado["timer_fondo_g"] = int(g)
@@ -274,10 +281,22 @@ _HTML = """<!doctype html>
     box-shadow:0 8px 24px rgba(0,0,0,.45)}
   .t-portada.ver{display:block}
   .tarjeta.oculto{opacity:0}
+  .letra{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;
+    width:min(92vw,900px);pointer-events:none;transition:opacity .3s;
+    font-family:-apple-system,Segoe UI,sans-serif}
+  .letra-actual{color:#fff;font-weight:800;line-height:1.2;
+    font-size:clamp(24px,5.5vw,52px);text-shadow:0 2px 18px rgba(0,0,0,.6)}
+  .letra-sig{color:rgba(255,255,255,.5);font-weight:600;margin-top:10px;
+    font-size:clamp(15px,3vw,26px)}
+  .letra.oculto{opacity:0}
 </style>
 </head>
 <body>
   <canvas id="cv"></canvas>
+  <div class="letra oculto" id="letra">
+    <div class="letra-actual" id="letraActual"></div>
+    <div class="letra-sig" id="letraSig"></div>
+  </div>
   <div class="tarjeta oculto" id="tarjeta">
     <img class="t-portada" id="tportada" alt="">
     <div class="t-nombre" id="tnombre"></div>
@@ -288,6 +307,9 @@ _HTML = """<!doctype html>
 <script>
 (function(){
   var estado=document.getElementById('estado');
+  var letra=document.getElementById('letra');
+  var letraActual=document.getElementById('letraActual');
+  var letraSig=document.getElementById('letraSig');
   var tarjeta=document.getElementById('tarjeta');
   var tnombre=document.getElementById('tnombre');
   var tartista=document.getElementById('tartista');
@@ -332,6 +354,11 @@ _HTML = """<!doctype html>
     tarjeta.style.top=((y!=null?y:0.85)*100)+'%';
     refrescarTarjeta();
   }
+  function aplicarLetra(actual,siguiente){
+    letraActual.textContent=actual||'';
+    letraSig.textContent=siguiente||'';
+    letra.classList.toggle('oculto',!(actual&&actual.length));
+  }
   function marcaEstado(txt){
     estado.textContent=txt; estado.classList.remove('oculto');
     clearTimeout(ocultarT);
@@ -353,6 +380,7 @@ _HTML = """<!doctype html>
       else if(d.t==='timer_estado'){timerOn=!!d.on;refrescarTarjeta()}
       else if(d.t==='timer_tick'){timerRestante=d.restante;vis.setTimerProgreso(d.p,d.restante);if(timerOn)refrescarTarjeta()}
       else if(d.t==='timer_fondo'){vis.setTimerFondoColor(d.r,d.g,d.b)}
+      else if(d.t==='letra'){aplicarLetra(d.actual,d.siguiente)}
       else if(d.t==='estado'){
         vis.setColor(d.r,d.g,d.b);vis.setRitmo(d.ritmo);
         vis.setTipo(d.tipo);vis.setMovimiento(d.movimiento);
@@ -362,6 +390,7 @@ _HTML = """<!doctype html>
         timerRestante=d.timer_restante; timerOn=!!d.timer_on;
         aplicarTitulo(d.titulo,d.titulo_escala,d.titulo_x,d.titulo_y,d.portada_tarjeta);
         aplicarCancion(d.cancion,d.artista,d.portada);
+        aplicarLetra(d.letra,d.letra_sig);
       }
     };
   }

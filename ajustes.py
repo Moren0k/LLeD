@@ -50,6 +50,8 @@ DEFAULTS: dict[str, Any] = {
     "visual_portada_difuminado": True,  # visual "portada": fondo difuminado detrás
     "visual_portada_x": 0.5,       # 0 (izq) - 1 (der): posición de la carátula
     "visual_portada_y": 0.42,      # 0 (arriba) - 1 (abajo)
+    # Letra sincronizada de la canción (fuente LRCLIB) en los visuales.
+    "visual_letra": False,
     # Cine Mode (ambilight): color ambiente según la pantalla.
     "ambilight_fps": 15,               # 10 - 30
     "ambilight_suavizado": 0.6,        # 0 - 0.95 (EMA, mayor = más suave)
@@ -108,7 +110,7 @@ def _validar(clave: str, valor: Any) -> Any:
         return valor if valor in VISUALES_VALIDOS else DEFAULTS[clave]
     if clave == "visual_movimiento":
         return bool(valor)
-    if clave in ("visual_portada", "visual_portada_difuminado"):
+    if clave in ("visual_portada", "visual_portada_difuminado", "visual_letra"):
         return bool(valor)
     if clave in ("visual_portada_x", "visual_portada_y"):
         return _clamp_float(valor, 0.0, 1.0, DEFAULTS[clave])

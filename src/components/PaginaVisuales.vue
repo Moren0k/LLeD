@@ -19,6 +19,7 @@
           class="prev-tarjeta"
           :style="{ left: ctrl.ajustes.visual_titulo_x * 100 + '%', top: ctrl.ajustes.visual_titulo_y * 100 + '%' }"
         >{{ ctrl.timer.activo ? 'TIMER' : ctrl.cancionActual }}</div>
+        <div v-if="ctrl.ajustes.visual_letra && ctrl.letraActual" class="prev-letra">{{ ctrl.letraActual }}</div>
       </div>
       <button class="btn btn-tint full" @click="ctrl.abrirVisualFull">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
@@ -153,6 +154,25 @@
       </template>
     </div>
 
+    <!-- Letra de la canción -->
+    <div class="glass card">
+      <div class="fila-titulo">
+        <span class="sub">Letra de la canción</span>
+        <AyudaInfo>Muestra la letra sincronizada de la canción sobre el visual, en tiempo real con lo que suena en Spotify. La fuente es LRCLIB; no todas las canciones tienen letra sincronizada.</AyudaInfo>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" :checked="ctrl.ajustes.visual_letra" @change="ctrl.toggleLetra($event.target.checked)" />
+        <span class="track"><span class="thumb"></span></span>
+        <span class="toggle-txt">Mostrar la letra</span>
+      </label>
+      <p class="nota" v-if="ctrl.ajustes.visual_letra && ctrl.cancionActual && !ctrl.letraDisponible">
+        Esta canción no tiene letra sincronizada disponible.
+      </p>
+      <p class="nota" v-else-if="ctrl.ajustes.visual_letra">
+        Se ve en pantalla completa y en el visual remoto mientras suena la canción.
+      </p>
+    </div>
+
     <!-- Visual remoto -->
     <div class="glass card">
       <div class="fila-top">
@@ -284,6 +304,11 @@ function copiar(texto) {
   background: rgba(255, 255, 255, 0.1); backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.16); max-width: 70%;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none;
+}
+.prev-letra {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  max-width: 86%; text-align: center; color: #fff; font-weight: 700; font-size: 0.95rem;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6); pointer-events: none; line-height: 1.25;
 }
 .full { width: 100%; justify-content: center; }
 

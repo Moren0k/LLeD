@@ -38,6 +38,11 @@ export function useControlador() {
   const portadaActual = ref('')
   const fuenteColorActual = ref('')
 
+  // ── Letra sincronizada ──
+  const letraActual = ref('')
+  const letraSiguiente = ref('')
+  const letraDisponible = ref(true)
+
   // ── Ajustes / biblioteca ──
   const ajustes = reactive({
     modo_transicion: 'gradiente',
@@ -57,6 +62,7 @@ export function useControlador() {
     visual_portada_difuminado: true,
     visual_portada_x: 0.5,
     visual_portada_y: 0.42,
+    visual_letra: false,
     ambilight_fps: 15,
     ambilight_suavizado: 0.6,
     ambilight_saturacion: 1.4,
@@ -272,6 +278,11 @@ export function useControlador() {
     enviar('spotify_modo', { modo })
   }
   function pedirEstadoSpotify() { enviar('spotify_estado') }
+  function toggleLetra(v) {
+    setAjuste('visual_letra', v, true)
+    enviar(v ? 'letra_iniciar' : 'letra_detener')
+    if (!v) { letraActual.value = ''; letraSiguiente.value = '' }
+  }
 
   // ── Acciones Ritmo ──
   function toggleRitmo() {
@@ -417,6 +428,8 @@ export function useControlador() {
     cancionActual.value = ''
     artistaActual.value = ''
     portadaActual.value = ''
+    letraActual.value = ''
+    letraSiguiente.value = ''
   })
   on('spotify_estado', (d) => {
     spotifyAutenticado.value = d.autenticado
@@ -440,6 +453,9 @@ export function useControlador() {
     if (d.ambiente_activado !== undefined) ambienteActivado.value = d.ambiente_activado
     if (d.ambiente_efecto) ambienteEfecto.value = d.ambiente_efecto
   })
+
+  on('letra', (d) => { letraActual.value = d.actual || ''; letraSiguiente.value = d.siguiente || '' })
+  on('letra_estado', (d) => { letraDisponible.value = !!d.tiene })
 
   on('ambiente_iniciado', (d) => { ambienteActivado.value = true; if (d.efecto) ambienteEfecto.value = d.efecto })
   on('ambiente_detenido', () => { ambienteActivado.value = false })
@@ -629,6 +645,7 @@ export function useControlador() {
     ritmoActivado, ritmoDisponible, flashColor, flashDeCancion, flashOnly, modoDeteccion,
     spotifyAutenticado, spotifySincronizando, spotifyCargando, spotifyTieneCredenciales,
     spotifyModo, spotifyAuthUrl, cancionActual, artistaActual, portadaActual, fuenteColorActual,
+    letraActual, letraSiguiente, letraDisponible,
     ajustes, biblioteca, mostrarFull,
     cerrarComportamiento, fondoTipo, fondoColor,
     dispositivo, dispositivos, escaneando, visual, beatActivo, beatTick, beatEnergia,
@@ -641,7 +658,7 @@ export function useControlador() {
     // acciones
     aplicarColor, aplicarBrillo, togglePower, encender, apagar, probar, arcoiris, aplicarTemperatura,
     iniciarSesionSpotify, cerrarSesionSpotify, iniciarSincronizacion, detenerSincronizacion,
-    cambiarModoSync, pedirEstadoSpotify,
+    cambiarModoSync, pedirEstadoSpotify, toggleLetra,
     toggleRitmo, cambiarFlashColor, flashColorCancion, toggleFlashOnly, cambiarModoDeteccion,
     cambiarModoTransicion, cambiarDuracion, cargarBiblioteca, editarColorCancion, eliminarCancion,
     borrarHistorial, resetearAjustes,
