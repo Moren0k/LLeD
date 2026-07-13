@@ -1,0 +1,50 @@
+name: Release
+
+# Compila la app en Windows y publica el instalador y la versión portable como
+# adjuntos de un Release de GitHub al crear un tag "vX.Y.Z" (o manualmente).
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Obtener el código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias del backend
+        run: |
+          python -m pip install --upgrade pip pyinstaller
+          python -m pip install -r requirements.txt
+
+      - name: Instalar dependencias de la interfaz
+        run: npm ci
+
+      - name: Compilar (interfaz + backend + instalador y portable)
+        run: npm run build
+        env:
+          # No hay certificado de firma: se omite la firma de código.
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Publicar los ejecutables en el Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist_installer/*.exe
+          fail_on_unmatched_files: true
+          generate_release_notes: true

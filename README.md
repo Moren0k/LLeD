@@ -3,6 +3,22 @@
 Aplicación de escritorio para controlar tiras LED Bluetooth y sincronizarlas con
 la música y el contenido de la pantalla.
 
+## Descargar (Windows)
+
+Descargá la última versión desde la página de Releases del repositorio:
+
+**https://github.com/Moren0k/LLeD/releases/latest**
+
+Hay dos opciones:
+
+- **Instalador** (`LLeD-Instalador-x.y.z.exe`): instala la aplicación en el
+  equipo y crea el acceso directo. Recomendado para uso normal.
+- **Portable** (`LLeD-Portable-x.y.z.exe`): un único ejecutable que se abre sin
+  instalar nada. Ideal para probarla o llevarla en un USB.
+
+No requiere tener Python ni nada más instalado. En el primer uso, Windows puede
+pedir permiso de firewall para el visual remoto (aceptar en red privada).
+
 ## Descripción
 
 LLeD conecta una tira LED Bluetooth al equipo y permite controlarla desde una
