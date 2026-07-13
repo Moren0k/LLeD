@@ -2,6 +2,7 @@
   "name": "lled",
   "version": "2.0.0",
   "description": "LLeD — Controlador de tiras LED con sincronización musical y visuales",
+  "author": "Moren0k",
   "main": "electron/main.js",
   "scripts": {
     "dev:front": "vite",
@@ -10,7 +11,7 @@
     "dev": "concurrently -k \"npm run dev:servidor\" \"npm run dev:front\" \"sleep 3 && npm run dev:electron\"",
     "build:front": "vite build",
     "build:backend": "powershell -ExecutionPolicy Bypass -File build_backend.ps1",
-    "build:electron": "electron-builder",
+    "build:electron": "electron-builder --publish never",
     "build": "npm run build:front && npm run build:backend && npm run build:electron"
   },
   "build": {
